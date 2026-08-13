@@ -1,7 +1,7 @@
 import { el, fmt } from '../ui.js';
 
 export function renderTop(app){
-  const { tg, state, show } = app;
+  const { tg, show } = app;
   const wrap = el('div');
   wrap.innerHTML = `
     <div class="game-head"><button class="back">←</button><div class="gtitle">ТОП ИГРОКОВ</div><div style="width:40px"></div></div>
