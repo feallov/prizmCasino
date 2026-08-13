@@ -1,4 +1,6 @@
 import { $, el, fmt, haptic } from './ui.js';
+import { renderCoinflip } from './games/coinflip.js';
+import { renderWheel } from './games/wheel.js';
 
 const tg = window.Telegram?.WebApp;
 try{
@@ -14,6 +16,10 @@ const I = {
   tasks:'<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="5"/><path d="m9 12.5 2.5 2.5L16 9.5"/></svg>',
 };
 
+function soon(title){
+  return () => el('div','panel',`<div style="font-size:34px"></div><b style="color:var(--text)">${title}</b><span>появится скоро</span>`);
+}
+
 const TABS = [
   { id:'lobby', label:'Лобби',   icon:I.home,   render:renderLobby },
   { id:'top',   label:'Топ',     icon:I.trophy, render:soon('Топ игроков') },
@@ -21,11 +27,12 @@ const TABS = [
 ];
 const SCREENS = Object.fromEntries(TABS.map(t => [t.id, t]));
 SCREENS.profile = { render: renderProfile };
+SCREENS.coinflip = { render: renderCoinflip };
+SCREENS.wheel = { render: renderWheel };
 
-/* 13 игр, у каждой свой цвет */
 const GAMES = [
-  { t:'Coinflip',  e:'🪙', max:'макс 9 000 💎',  g:'linear-gradient(160deg,#8ecdf8,#4aa8ef 55%,#2f7fd6)', featured:true, isNew:true },
-  { t:'Wheel',     e:'🎡', max:'макс 10 000 💎', g:'linear-gradient(160deg,#86efac,#22c55e 50%,#0d9488)' },
+  { t:'Coinflip',  e:'🪙', max:'макс 9 000 💎',  g:'linear-gradient(160deg,#8ecdf8,#4aa8ef 55%,#2f7fd6)', featured:true, isNew:true, screen:'coinflip' },
+  { t:'Wheel',     e:'🎡', max:'макс 10 000 💎', g:'linear-gradient(160deg,#86efac,#22c55e 50%,#0d9488)', screen:'wheel' },
   { t:'Mines',     e:'💣', max:'макс 10 000 💎', g:'linear-gradient(160deg,#4c3a9e,#241b52 60%,#141034)', stars:true },
   { t:'Crash',     e:'🚀', max:'макс 50 000 💎', g:'linear-gradient(160deg,#f87171,#ef4444 55%,#b91c1c)', isNew:true },
   { t:'Ladder',    e:'🪜', max:'макс 9 000 💎',  g:'linear-gradient(160deg,#c4b5fd,#8b5cf6 55%,#6d28d9)' },
@@ -49,10 +56,6 @@ function toast(text){
   toastT = setTimeout(()=>t.classList.remove('show'), 1800);
 }
 
-function soon(title){
-  return () => el('div','panel',`<div style="font-size:34px"></div><b style="color:var(--text)">${title}</b><span>появится скоро</span>`);
-}
-
 function gameCard(o){
   const c = el('div',`card shine ${o.featured ? 'featured' : ''} ${o.stars ? 'stars' : ''}`);
   c.style.background = o.g;
@@ -61,7 +64,7 @@ function gameCard(o){
     (o.online != null ? `<span class="online-pill"><i></i>${o.online}</span>` : '') +
     `<div class="art">${o.e}</div><div class="title">${o.t}</div>` +
     (o.max ? `<div class="max-pill">${o.max}</div>` : '');
-  c.onclick = () => { haptic(tg); toast(`${o.t} — скоро`); };
+  c.onclick = () => { haptic(tg); o.screen ? show(o.screen) : toast(`${o.t} — скоро`); };
   return c;
 }
 
@@ -98,7 +101,6 @@ function renderLobby(){
     if (gm.featured) wrap.append(card); else grid.append(card);
   });
   wrap.append(grid);
-
   wrap.append(wideCard('🎁','Ежедневный бонус','скоро'));
   wrap.append(wideCard('✈️','Подписаться на канал','+50 💎'));
   return wrap;
@@ -139,11 +141,13 @@ function syncTop(){
   $('#online').textContent = state.online;
 }
 
+const APP = { tg, state, syncTop, toast, show };
+
 function show(id){
   const s = SCREENS[id];
   const root = $('#screens');
   root.replaceChildren(el('div','screen'));
-  root.firstChild.append(s.render());
+  root.firstChild.append(s.render(APP));
   for(const b of $('#tabbar').querySelectorAll('.tab')) b.classList.toggle('active', b.dataset.id === id);
 }
 
