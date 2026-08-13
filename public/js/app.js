@@ -117,7 +117,7 @@ function renderProfile(){
   if (u?.isAdmin) info.innerHTML += `<div class="admin-badge">ADMIN</div>`;
   head.append(ava, info);
 
-  const balance = el('div','panel',`<span>Баланс</span><b class="big-num">${fmt(state.balance)} ₽</b>`);
+  const balance = el('div','panel',`<span>Баланс</span><b class="big-num" data-balance>${fmt(state.balance)} ₽</b>`);
   balance.style.marginTop = '12px';
 
   const s = state.stats ?? {};
