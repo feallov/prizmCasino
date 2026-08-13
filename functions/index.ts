@@ -249,12 +249,13 @@ async function handle(request: Request, env: any): Promise<Response> {
     if (url.pathname !== '/api/play') return json({ error: 'not_found' }, 404);
 
     const game = String(body.game ?? '');
-    const known = ['coinflip','wheel','mines','crash','ladder','dice','slots','roulette','blackjack','cases','rps','plinko','hilo'].includes(game);
+    const base = game.replace(/_(start|pick|cash|check|hit|stand|guess)$/, '');
+    const known = ['coinflip','wheel','mines','crash','ladder','dice','slots','roulette','blackjack','cases','rps','plinko','hilo'].includes(base);
     if (!known) return json({ error: 'unknown_game' }, 400);
     const bet = Math.floor(Number(body.bet));
-    const noBet = ['mines_pick','mines_cash','crash_cash','crash_check','ladder_pick','ladder_cash','bj_hit','bj_stand','hilo_guess','hilo_cash'].includes(game);
+    const noBet = ['mines_pick','mines_cash','crash_cash','crash_check','ladder_pick','ladder_cash','blackjack_hit','blackjack_stand','hilo_guess','hilo_cash'].includes(game);
     if (!noBet && (!Number.isFinite(bet) || bet < 1 || bet > 1_000_000_000)) return json({ error: 'bad_bet' }, 400);
-    await env.DB.prepare('UPDATE users SET last_game = ? WHERE telegram_id = ?').bind(game, uid).run();
+    await env.DB.prepare('UPDATE users SET last_game = ? WHERE telegram_id = ?').bind(base, uid).run();
     const pay = async (p: number, g: string) => {
       await ledger(env, uid, -bet, 'bet', g);
       if (p) await ledger(env, uid, p, 'win', g);
