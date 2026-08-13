@@ -318,6 +318,11 @@ async function handle(request: Request, env: any): Promise<Response> {
       await env.DB.prepare('INSERT INTO promos (code, amount, max_uses, uses, created_at) VALUES (?,?,?,?,?) ON CONFLICT(code) DO UPDATE SET amount=excluded.amount, max_uses=excluded.max_uses').bind(code, amount, maxUses, 0, Date.now()).run();
       return json({ ok: true });
     }
+        if (url.pathname === '/api/admin/webhook') {
+      const r = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/setWebhook?url=${encodeURIComponent(url.origin + '/api/tgwebhook')}`);
+      const d: any = await r.json();
+      return json({ ok: !!d.ok, desc: d.description });
+    }
     if (url.pathname === '/api/admin/promos') {
       const rows: any = await env.DB.prepare('SELECT * FROM promos ORDER BY created_at DESC LIMIT 50').all();
       return json({ ok: true, promos: rows.results });
