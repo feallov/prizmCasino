@@ -24,7 +24,7 @@ export function renderTasks(app){
   if (state.user?.last_daily && Date.now() - state.user.last_daily < 24*3600*1000){
     const left = 24*3600*1000 - (Date.now() - state.user.last_daily);
     const h = Math.floor(left/3600000), m = Math.floor((left%3600000)/60000);
-    dailySub.textContent = `Серия: ${state.user.streak ?? 1} 🔥 • Следующий через ${h}ч ${m}м`;
+    dailySub.textContent = `Серия: ${state.user.streak ?? 1} 🔥 • следующий через ${h}ч ${m}м`;
     dailyBtn.disabled = true;
   } else {
     dailySub.textContent = `Серия: ${state.user.streak ?? 0} 🔥 • +25 ₽ сегодня`;
@@ -47,4 +47,48 @@ export function renderTasks(app){
     state.user.streak = d.streak;
     state.user.last_daily = Date.now();
     syncTop();
-    toast(`+${d.amount}
+    toast(`+${d.amount} ₽ • серия ${d.streak} 🔥`);
+    try { tg?.HapticFeedback?.notificationOccurred('success'); } catch {}
+    dailySub.textContent = `Серия: ${d.streak} 🔥 • следующий через 24ч`;
+  };
+
+  fetch('/api/tasks', {
+    method:'POST', headers:{'content-type':'application/json'},
+    body: JSON.stringify({ initData: tg?.initData ?? '' })
+  }).then(r => r.json()).then(d => {
+    if (!d.ok) return;
+    list.replaceChildren();
+    for (const t of d.tasks){
+      const row = el('div','task-row glass');
+      const icon = t.done ? '✅' : t.ready ? '🎯' : '🔒';
+      row.innerHTML = `
+        <div style="font-size:22px">${icon}</div>
+        <div style="flex:1">
+          <b style="color:var(--text)">${t.title}</b>
+          <div style="color:var(--gold);font-size:12px;font-weight:800">+${t.reward} ₽</div>
+        </div>
+        <button class="chip" ${t.done || !t.ready ? 'disabled' : ''}>${t.done ? 'готово' : 'забрать'}</button>`;
+      const btn = row.querySelector('button');
+      const iconEl = row.querySelector('div[style*="22px"]');
+      if (!t.done && t.ready){
+        btn.onclick = async () => {
+          btn.disabled = true; haptic(tg, 'medium');
+          const r = await fetch('/api/task_claim', {
+            method:'POST', headers:{'content-type':'application/json'},
+            body: JSON.stringify({ initData: tg?.initData ?? '', task: t.id })
+          });
+          const d2 = await r.json();
+          if (!d2.ok){ btn.disabled = false; return toast(d2.error === 'not_ready' ? 'Ещё не готово' : 'Ошибка'); }
+          state.balance = d2.balance; syncTop();
+          toast(`+${d2.reward} ₽`);
+          try { tg?.HapticFeedback?.notificationOccurred('success'); } catch {}
+          btn.textContent = 'готово';
+          iconEl.textContent = '✅';
+        };
+      }
+      list.append(row);
+    }
+  });
+
+  return wrap;
+}
