@@ -107,14 +107,57 @@ async function handle(request: Request, env: any): Promise<Response> {
   if (request.method !== 'POST') return json({ error: 'method' }, 405);
   if (!env.BOT_TOKEN) return json({ error: 'no_bot_token' }, 500);
 
-  let body: any = {};
-  try { body = await request.json(); } catch { return json({ error: 'bad_body' }, 400); }
-  const tgUser = await validateInitData(body.initData ?? '', env.BOT_TOKEN);
+    let body: any = {};
+  try { body = await request.json(); } catch { body = {}; }
+
+  /* вебхук бота: ловит /start refXXX и шлёт кнопку входа */
+  if (url.pathname === '/api/tgwebhook') {
+    try {
+      const text = String(body?.message?.text ?? '');
+      const from = body?.message?.from?.id;
+      const chat = body?.message?.chat?.id;
+      if (from && text.startsWith('/start')) {
+        if (text.startsWith('/start ref')) {
+          const ref = Number(text.replace('/start ref', '').trim());
+          if (Number.isFinite(ref) && ref > 0 && ref !== from) {
+            await ensureSchema(env.DB);
+            await env.DB.prepare('INSERT OR REPLACE INTO pending_ref (user_id, ref_id, created_at) VALUES (?,?,?)').bind(from, ref, Date.now()).run();
+          }
+        }
+        await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chat ?? from,
+            text: '🎰 PRIZM Casino — залетай, стартовые 100 ₽ уже ждут',
+            reply_markup: { inline_keyboard: [[{ text: '🎰 Открыть казино', web_app: { url: url.origin } }]] },
+          }),
+        });
+      }
+    } catch {}
+    return json({ ok: true });
+  }
+
+  if (!body.initData) return json({ error: 'bad_body' }, 400);
+  const tgUser = await validateInitData(body.initData, env.BOT_TOKEN);
   if (!tgUser) return json({ error: 'unauthorized' }, 401);
 
   await ensureSchema(env.DB);
   const uid = tgUser.id;
-  const user: any = await getOrCreateUser(env.DB, tgUser);
+     const user: any = await getOrCreateUser(env.DB, tgUser);
+
+  /* привязка реферера: start_param или pending_ref из вебхука */
+  if (!user.ref_id) {
+    let ref = Number(body.start);
+    if (!Number.isFinite(ref) || ref <= 0) ref = 0;
+    if (!ref) {
+      const pr: any = await env.DB.prepare('SELECT ref_id FROM pending_ref WHERE user_id = ?').bind(uid).first();
+      ref = pr?.ref_id ?? 0;
+    }
+    if (ref && ref !== uid) {
+      await env.DB.prepare('UPDATE users SET ref_id = ? WHERE telegram_id = ?').bind(ref, uid).run();
+      user.ref_id = ref;
+    }
+  }
 
   /* ---------- /api/me ---------- */
   if (url.pathname === '/api/me') {
@@ -224,6 +267,13 @@ async function handle(request: Request, env: any): Promise<Response> {
     const balance = await credit(env, uid, t.reward);
     await ledger(env, uid, t.reward, 'task', t.id);
     return json({ ok: true, reward: t.reward, balance });
+  }
+
+    /* ---------- рефералка ---------- */
+  if (url.pathname === '/api/ref') {
+    const cnt: any = await env.DB.prepare('SELECT COUNT(*) AS c FROM users WHERE ref_id = ?').bind(uid).first();
+    const rew: any = await env.DB.prepare('SELECT COUNT(*) AS c FROM users WHERE ref_id = ? AND ref_rewarded = 1').bind(uid).first();
+    return json({ ok: true, invited: cnt?.c ?? 0, rewarded: rew?.c ?? 0 });
   }
 
   /* ---------- промокоды ---------- */
