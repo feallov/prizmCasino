@@ -28,9 +28,11 @@ export function renderRps(app){
 
   const btns = [...wrap.querySelectorAll('.choice')];
   btns.forEach((b,i) => b.onclick = () => {
-    choice = OPTS[i];
-    btns.forEach(x => x.classList.toggle('active', x === b));
-    haptic(tg);
+    if(!busy){
+      choice = OPTS[i];
+      btns.forEach(x => x.classList.toggle('active', x === b));
+      haptic(tg);
+    }
   });
 
   const bets = makeBetRow(() => state.balance, v => bet = v);
@@ -41,13 +43,17 @@ export function renderRps(app){
   go.onclick = async () => {
     if (busy) return; busy = true; go.disabled = true;
     res.hidden = true; stage.classList.remove('win','lose');
+    bets.el.style.display = 'none';
+    btns.forEach(b => b.disabled = true);
     haptic(tg, 'medium');
     const d = await play(tg, 'rps', { bet, choice });
     if (!d.ok){
       busy = false; go.disabled = false;
-      return toast(d.error === 'low_balance' ? 'Не хватает осколков' : 'Ошибка');
+      bets.el.style.display = '';
+      btns.forEach(b => b.disabled = false);
+      toast(d.error === 'low_balance' ? 'Не хватает рублей' : 'Ошибка');
+      return;
     }
-    state.balance = d.balance; syncTop();
 
     let t = 0;
     const iv = setInterval(() => {
@@ -56,15 +62,19 @@ export function renderRps(app){
       t++;
       if (t > 9){
         clearInterval(iv);
+        state.balance = d.balance; syncTop();
         P.textContent = EMO[d.player];
         C.textContent = EMO[d.cpu];
         const win = d.result === 'win', draw = d.result === 'draw';
         res.hidden = false;
         res.className = `result-pill ${win ? 'win' : draw ? '' : 'lose'}`;
-        res.textContent = win ? `+${fmt(d.payout)} 💎` : draw ? 'Ничья • возврат' : `−${fmt(bet)} 💎`;
+        const profit = d.payout - bet;
+        res.textContent = win ? `+${fmt(profit)} ₽` : draw ? 'Ничья • возврат' : `−${fmt(bet)} ₽`;
         stage.classList.add(win ? 'win' : 'lose');
         try { tg?.HapticFeedback?.notificationOccurred(win ? 'success' : draw ? 'warning' : 'error'); } catch {}
         busy = false; go.disabled = false;
+        bets.el.style.display = '';
+        btns.forEach(b => b.disabled = false);
       }
     }, 80);
   };
