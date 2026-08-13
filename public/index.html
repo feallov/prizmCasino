@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-  <meta name="theme-color" content="#0a0c12" />
+  <meta name="theme-color" content="#0b0d10" />
   <title>PRIZM Casino</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -21,14 +21,15 @@
     </div>
   </div>
 
-  <header id="topbar" class="glass hidden">
-    <div class="logo">PRIZM<b>◆</b></div>
-    <div class="pill" id="balance">— 💎</div>
+  <header id="topbar" class="hidden">
+    <div class="pill logo">PRIZM</div>
+    <div class="online"><i></i><span id="online">1</span> онлайн</div>
+    <div class="pill balance" id="balance">— 💎</div>
   </header>
 
   <main id="screens"></main>
 
-  <nav id="tabbar" class="glass hidden"></nav>
+  <nav id="tabbar" class="hidden"></nav>
 
   <script type="module" src="/js/app.js"></script>
 </body>
