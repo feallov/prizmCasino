@@ -33,3 +33,16 @@ export function makeBetRow(getBalance, onSet){
   set(10);
   return { el: row, get: () => bet, set };
 }
+
+export async function play(tg, game, payload){
+  try{
+    const r = await fetch('/api/play', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ initData: tg?.initData ?? '', game, ...payload }),
+    });
+    const d = await r.json();
+    if (!d.ok && d.error) console.error('[play]', game, d.error);
+    return d;
+  }catch(e){ console.error('[play network]', e); return { error: 'network' }; }
+}
