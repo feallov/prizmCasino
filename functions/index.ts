@@ -68,7 +68,7 @@ async function loadSession(env: any, sid: string, uid: number) {
   return { data: JSON.parse(row.data) as any };
 }
 async function saveSession(env: any, sid: string, uid: number, game: string, data: any) {
-  await env.DB.prepare('INSERT INTO sessions (id,user_id,game,data,created_at) VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data = excluded.data')
+    await env.DB.prepare('INSERT OR REPLACE INTO sessions (id,user_id,game,data,created_at) VALUES (?,?,?,?,?)')
     .bind(sid, uid, game, JSON.stringify(data), Date.now()).run();
 }
 async function ledger(env: any, uid: number, amount: number, reason: string, game: string) {
