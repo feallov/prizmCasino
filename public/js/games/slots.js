@@ -29,13 +29,15 @@ export function renderSlots(app){
   go.onclick = async () => {
     if (busy) return; busy = true; go.disabled = true;
     res.hidden = true; stage.classList.remove('win','lose');
+    bets.el.style.display = 'none';
     haptic(tg, 'medium');
     const d = await play(tg, 'slots', { bet });
     if (!d.ok){
       busy = false; go.disabled = false;
-      return toast(d.error === 'low_balance' ? 'Не хватает осколков' : 'Ошибка');
+      bets.el.style.display = '';
+      toast(d.error === 'low_balance' ? 'Не хватает рублей' : 'Ошибка');
+      return;
     }
-    state.balance = d.balance; syncTop();
 
     const spinners = reels.map((r, k) => {
       const iv = setInterval(() => { r.textContent = SYM[Math.floor(Math.random()*SYM.length)]; }, 70);
@@ -49,13 +51,16 @@ export function renderSlots(app){
     });
 
     setTimeout(() => {
+      state.balance = d.balance; syncTop();
       const win = d.payout > 0;
       res.hidden = false;
       res.className = `result-pill ${win ? 'win' : 'lose'}`;
-      res.textContent = win ? `x${d.mult} • +${fmt(d.payout)} 💎` : `−${fmt(bet)} 💎`;
+      const profit = d.payout - bet;
+      res.textContent = win ? `x${d.mult} • +${fmt(profit)} ₽` : `−${fmt(bet)} ₽`;
       stage.classList.add(win ? 'win' : 'lose');
       try { tg?.HapticFeedback?.notificationOccurred(win ? 'success' : 'error'); } catch {}
       busy = false; go.disabled = false;
+      bets.el.style.display = '';
     }, 700 + 2*450 + 350);
   };
 
