@@ -1,12 +1,4 @@
 import { $, el, fmt, haptic } from './ui.js';
-import { renderCoinflip } from './games/coinflip.js';
-import { renderWheel } from './games/wheel.js';
-import { renderMines } from './games/mines.js';
-import { renderCrash } from './games/crash.js';
-import { renderLadder } from './games/ladder.js';
-import { renderDice } from './games/dice.js';
-import { renderSlots } from './games/slots.js';
-import { renderRoulette } from './games/roulette.js';
 
 const tg = window.Telegram?.WebApp;
 try{
@@ -14,7 +6,7 @@ try{
   tg?.setHeaderColor?.('#0b0d10'); tg?.setBackgroundColor?.('#0b0d10');
 }catch{}
 
-const state = { user:null, balance:null, online:1 };
+const state = { user:null, balance:null, online:1, screen:'lobby' };
 
 const I = {
   home:'<svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>',
@@ -33,14 +25,6 @@ const TABS = [
 ];
 const SCREENS = Object.fromEntries(TABS.map(t => [t.id, t]));
 SCREENS.profile = { render: renderProfile };
-SCREENS.coinflip = { render: renderCoinflip };
-SCREENS.wheel = { render: renderWheel };
-SCREENS.mines = { render: renderMines };
-SCREENS.crash = { render: renderCrash };
-SCREENS.ladder = { render: renderLadder };
-SCREENS.dice = { render: renderDice };
-SCREENS.slots = { render: renderSlots };
-SCREENS.roulette = { render: renderRoulette };
 
 const GAMES = [
   { t:'Coinflip',  e:'🪙', max:'макс 9 000 💎',  g:'linear-gradient(160deg,#8ecdf8,#4aa8ef 55%,#2f7fd6)', featured:true, isNew:true, screen:'coinflip' },
@@ -51,11 +35,11 @@ const GAMES = [
   { t:'Dice',      e:'🎲', max:'макс 5 000 💎',  g:'linear-gradient(160deg,#cbd5e1,#64748b 60%,#334155)', screen:'dice' },
   { t:'Slots',     e:'🎰', max:'макс 25 000 💎', g:'linear-gradient(160deg,#fcd34d,#f59e0b 55%,#d97706)', screen:'slots' },
   { t:'Roulette',  e:'🎯', max:'макс 10 000 💎', g:'linear-gradient(160deg,#4b5563,#1f2937 60%,#111827)', screen:'roulette' },
-  { t:'Blackjack', e:'🃏', max:'макс 15 000 💎', g:'linear-gradient(160deg,#34d399,#059669 55%,#065f46)' },
-  { t:'Cases',     e:'📦', max:'макс 20 000 💎', g:'linear-gradient(160deg,#fdba74,#f97316 55%,#c2410c)' },
-  { t:'RPS',       e:'✌️', max:'макс 3 000 💎',  g:'linear-gradient(160deg,#5eead4,#14b8a6 55%,#0f766e)' },
-  { t:'Plinko',    e:'⚪', max:'макс 12 000 💎', g:'linear-gradient(160deg,#f9a8d4,#ec4899 55%,#be185d)', isNew:true },
-  { t:'Hi-Lo',     e:'📈', max:'макс 8 000 💎',  g:'linear-gradient(160deg,#67e8f9,#06b6d4 55%,#0e7490)' },
+  { t:'Blackjack', e:'🃏', max:'макс 15 000 💎', g:'linear-gradient(160deg,#34d399,#059669 55%,#065f46)', screen:'blackjack' },
+  { t:'Cases',     e:'📦', max:'макс 20 000 💎', g:'linear-gradient(160deg,#fdba74,#f97316 55%,#c2410c)', screen:'cases' },
+  { t:'RPS',       e:'✌️', max:'макс 3 000 💎',  g:'linear-gradient(160deg,#5eead4,#14b8a6 55%,#0f766e)', screen:'rps' },
+  { t:'Plinko',    e:'⚪', max:'макс 12 000 💎', g:'linear-gradient(160deg,#f9a8d4,#ec4899 55%,#be185d)', isNew:true, screen:'plinko' },
+  { t:'Hi-Lo',     e:'📈', max:'макс 8 000 💎',  g:'linear-gradient(160deg,#67e8f9,#06b6d4 55%,#0e7490)', screen:'hilo' },
 ];
 
 let toastT;
@@ -76,7 +60,7 @@ function gameCard(o){
     (o.online != null ? `<span class="online-pill"><i></i>${o.online}</span>` : '') +
     `<div class="art">${o.e}</div><div class="title">${o.t}</div>` +
     (o.max ? `<div class="max-pill">${o.max}</div>` : '');
-  c.onclick = () => { haptic(tg); o.screen ? show(o.screen) : toast(`${o.t} — скоро`); };
+  c.onclick = () => { haptic(tg); show(o.screen); };
   return c;
 }
 
@@ -156,10 +140,25 @@ function syncTop(){
 const APP = { tg, state, syncTop, toast, show };
 
 function show(id){
-  const s = SCREENS[id];
+  state.screen = id;
   const root = $('#screens');
   root.replaceChildren(el('div','screen'));
-  root.firstChild.append(s.render(APP));
+
+  const s = SCREENS[id];
+  if (s) {
+    root.firstChild.append(s.render(APP));
+  } else {
+    root.firstChild.append(el('div','panel','<div style="font-size:34px">⏳</div>'));
+    import(`./games/${id}.js`).then(m => {
+      if (state.screen !== id) return;
+      const fn = Object.values(m).find(v => typeof v === 'function');
+      root.replaceChildren(el('div','screen'));
+      root.firstChild.append(fn(APP));
+    }).catch(() => {
+      if (state.screen !== id) return;
+      root.firstChild.replaceChildren(el('div','panel',`<b style="color:var(--text)">Скоро</b><span>игра ещё не подключена</span>`));
+    });
+  }
   for(const b of $('#tabbar').querySelectorAll('.tab')) b.classList.toggle('active', b.dataset.id === id);
 }
 
