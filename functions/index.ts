@@ -229,7 +229,7 @@ export default {
       }
       if (url.pathname === '/api/admin/promos') {
         const rows: any = await env.DB.prepare('SELECT * FROM promos ORDER BY created_at DESC LIMIT 50').all();
-        return json({ ok: true, promos: rows.results };
+        return json({ ok: true, promos: rows.results });
       }
       return json({ error: 'unknown' }, 400);
     }
