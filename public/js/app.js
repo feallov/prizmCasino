@@ -140,6 +140,21 @@ function renderProfile(){
     adm.onclick = () => show('admin');
     wrap.append(adm);
   }
+  const reflink = `https://t.me/prizmCasinoBot?start=ref${u?.id}`;
+  const refBox = el('div','panel');
+  refBox.style.marginTop = '12px';
+  refBox.innerHTML = `
+    <span style="color:var(--text);font-weight:800">🤝 Пригласи друга — получи 50 ₽</span>
+    <span>Друг делает 3 ставки — вам обоим по 50 ₽</span>
+    <input class="admin-input" readonly style="text-align:center;font-size:11px" value="${reflink}" />
+    <button class="cta" style="width:100%">📋 Скопировать ссылку</button>`;
+  refBox.querySelector('button').onclick = async () => {
+    haptic(tg);
+    const inp = refBox.querySelector('input');
+    try { await navigator.clipboard.writeText(reflink); } catch { inp.select(); try { document.execCommand('copy'); } catch {} }
+    toast('Ссылка скопирована');
+  };
+  wrap.append(refBox);
 
   const promo = el('button','cta','🎟️ Активировать промокод');
   promo.style.marginTop = '10px';
