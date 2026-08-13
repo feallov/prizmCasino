@@ -1,6 +1,8 @@
 import { $, el, fmt, haptic } from './ui.js';
 import { renderCoinflip } from './games/coinflip.js';
 import { renderWheel } from './games/wheel.js';
+import { renderMines } from './games/mines.js';
+import { renderCrash } from './games/crash.js';
 
 const tg = window.Telegram?.WebApp;
 try{
@@ -29,12 +31,14 @@ const SCREENS = Object.fromEntries(TABS.map(t => [t.id, t]));
 SCREENS.profile = { render: renderProfile };
 SCREENS.coinflip = { render: renderCoinflip };
 SCREENS.wheel = { render: renderWheel };
+SCREENS.mines = { render: renderMines };
+SCREENS.crash = { render: renderCrash };
 
 const GAMES = [
   { t:'Coinflip',  e:'🪙', max:'макс 9 000 💎',  g:'linear-gradient(160deg,#8ecdf8,#4aa8ef 55%,#2f7fd6)', featured:true, isNew:true, screen:'coinflip' },
   { t:'Wheel',     e:'🎡', max:'макс 10 000 💎', g:'linear-gradient(160deg,#86efac,#22c55e 50%,#0d9488)', screen:'wheel' },
-  { t:'Mines',     e:'💣', max:'макс 10 000 💎', g:'linear-gradient(160deg,#4c3a9e,#241b52 60%,#141034)', stars:true },
-  { t:'Crash',     e:'🚀', max:'макс 50 000 💎', g:'linear-gradient(160deg,#f87171,#ef4444 55%,#b91c1c)', isNew:true },
+  { t:'Mines',     e:'💣', max:'макс 10 000 💎', g:'linear-gradient(160deg,#4c3a9e,#241b52 60%,#141034)', stars:true, screen:'mines' },
+  { t:'Crash',     e:'🚀', max:'макс 50 000 💎', g:'linear-gradient(160deg,#f87171,#ef4444 55%,#b91c1c)', isNew:true, screen:'crash' },
   { t:'Ladder',    e:'🪜', max:'макс 9 000 💎',  g:'linear-gradient(160deg,#c4b5fd,#8b5cf6 55%,#6d28d9)' },
   { t:'Dice',      e:'🎲', max:'макс 5 000 💎',  g:'linear-gradient(160deg,#cbd5e1,#64748b 60%,#334155)' },
   { t:'Slots',     e:'🎰', max:'макс 25 000 💎', g:'linear-gradient(160deg,#fcd34d,#f59e0b 55%,#d97706)' },
