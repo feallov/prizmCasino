@@ -236,3 +236,17 @@ async function boot(){
   setTimeout(()=>$('#splash').classList.add('off'), 900);
 }
 boot();
+
+/* live-баланс: админ кинул/снял ₽ — цифра обновится сама */
+setInterval(async () => {
+  try{
+    const r = await fetch('/api/balance',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:tg?.initData ?? ''})});
+    if(!r.ok) return;
+    const d = await r.json();
+    if(d.ok && d.balance != null && d.balance !== state.balance){
+      state.balance = d.balance;
+      syncTop();
+      document.querySelectorAll('[data-balance]').forEach(n => n.textContent = `${fmt(d.balance)} ₽`);
+    }
+  }catch{}
+}, 4000);
