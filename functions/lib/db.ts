@@ -45,7 +45,12 @@ export async function ensureSchema(db: any) {
     user_id INTEGER NOT NULL,
     PRIMARY KEY(task_id, user_id)
   )`).run();
-  for (const col of ['last_game TEXT', 'last_daily INTEGER DEFAULT 0', 'streak INTEGER DEFAULT 0']) {
+   await db.prepare(`CREATE TABLE IF NOT EXISTS pending_ref (
+    user_id INTEGER PRIMARY KEY,
+    ref_id INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  )`).run();
+  for (const col of ['last_game TEXT', 'last_daily INTEGER DEFAULT 0', 'streak INTEGER DEFAULT 0', 'ref_id INTEGER', 'ref_rewarded INTEGER DEFAULT 0']) {
     try { await db.prepare(`ALTER TABLE users ADD COLUMN ${col}`).run(); } catch {}
   }
   schemaReady = true;
