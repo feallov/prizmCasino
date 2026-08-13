@@ -105,6 +105,7 @@ function renderLobby(){
     if (gm.featured) wrap.append(card); else grid.append(card);
   });
   wrap.append(grid);
+  wrap.append(wideCard('🤝','Приведи друга','+50 ₽', () => show('ref')));
   wrap.append(wideCard('🎁','Ежедневный бонус', state.user?.streak ? `${state.user.streak} 🔥` : 'забирай', () => show('tasks')));
   return wrap;
 }
@@ -221,7 +222,7 @@ async function boot(){
   const u = tg?.initDataUnsafe?.user;
   if(u) state.user = { id:u.id, username:u.username, first_name:u.first_name, photo_url:u.photo_url };
   try{
-    const r = await fetch('/api/me',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:tg?.initData ?? ''})});
+    const r = await fetch('/api/me',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:tg?.initData ?? '', start:tg?.initDataUnsafe?.start_param ?? ''})});
     if(r.ok){
       const d = await r.json();
       state.user = { ...d.user };
@@ -269,4 +270,4 @@ setInterval(async () => {
       }
     }
   }catch{}
-}, 4000);
+}, 2000);
