@@ -242,10 +242,30 @@ setInterval(async () => {
     const r = await fetch('/api/balance',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:tg?.initData ?? ''})});
     if(!r.ok) return;
     const d = await r.json();
-    if(d.ok && d.balance != null && d.balance !== state.balance){
-      state.balance = d.balance;
-      syncTop();
-      document.querySelectorAll('[data-balance]').forEach(n => n.textContent = `${fmt(d.balance)} ₽`);
+       if(d.ok){
+      if (d.balance != null && d.balance !== state.balance){
+        state.balance = d.balance;
+        syncTop();
+        document.querySelectorAll('[data-balance]').forEach(n => n.textContent = `${fmt(d.balance)} ₽`);
+      }
+      if (d.stats){
+        state.stats = d.stats;
+        const st = d.stats;
+        const map = {
+          games: fmt(st.games ?? 0),
+          wagered: fmt(st.wagered ?? 0) + ' ₽',
+          won: fmt(st.won ?? 0) + ' ₽',
+          profit: fmt(st.profit ?? 0) + ' ₽',
+          biggest: fmt(st.biggest ?? 0) + ' ₽',
+        };
+        document.querySelectorAll('[data-stat]').forEach(n => {
+          const k = n.dataset.stat;
+          if (map[k] != null){
+            n.textContent = map[k];
+            if (k === 'profit'){ n.classList.toggle('pos', st.profit >= 0); n.classList.toggle('neg', st.profit < 0); }
+          }
+        });
+      }
     }
   }catch{}
 }, 4000);
