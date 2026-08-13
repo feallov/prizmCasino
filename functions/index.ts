@@ -365,10 +365,11 @@ export default {
     /* HI-LO */
     if (game === 'hilo_start') {
       if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
+           const first = 1 + randInt(12);
       const sid = crypto.randomUUID();
-      await saveSession(env, sid, uid, 'hilo', { bet, cur: 1 + randInt(12), mult: 1, done: false });
+      await saveSession(env, sid, uid, 'hilo', { bet, cur: first, mult: 1, done: false });
       await ledger(env, uid, -bet, 'bet', 'hilo');
-      return json({ ok: true, sid, cur: 1 + randInt(12) });
+      return json({ ok: true, sid, cur: first });
     }
     if (game === 'hilo_guess') {
       const s = await loadSession(env, String(body.sid ?? ''), uid);
