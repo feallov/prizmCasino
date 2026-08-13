@@ -149,15 +149,15 @@ function renderProfile(){
   return wrap;
 }
 
-function statBox(label, value, positive){
+function statBox(key, label, value, positive){
   const b = el('div','stat-box');
   const v = el('b','',String(value));
+  v.dataset.stat = key;
   if (positive === true) v.classList.add('pos');
   if (positive === false) v.classList.add('neg');
   b.append(el('span','',label), v);
   return b;
 }
-
 function buildChrome(){
   const bar = $('#tabbar');
   for(const t of TABS){
