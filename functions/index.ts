@@ -128,12 +128,24 @@ async function handle(request: Request, env: any): Promise<Response> {
       return json({ ok: true, balance: r?.balance ?? 0 });
     }
 
-    /* ---------- /api/top ---------- */
+       /* ---------- /api/top ---------- */
     if (url.pathname === '/api/top') {
-      const rows: any = await env.DB.prepare(`SELECT u.username, u.first_name, u.photo_url,
-                (SELECT COALESCE(SUM(l.amount),0) FROM ledger l WHERE l.user_id = u.telegram_id AND l.reason IN ('bet','win')) AS profit
-        FROM users u ORDER BY profit DESC LIMIT 20`).all();
-      return json({ ok: true, top: rows.results.filter((r: any) => r.profit > 0) });
+      const type = body.type === 'profit' ? 'profit' : 'balance';
+      let rows: any;
+      if (type === 'balance') {
+        rows = await env.DB.prepare(`SELECT telegram_id, username, first_name, photo_url, balance AS value
+          FROM users WHERE balance > 0 ORDER BY balance DESC LIMIT 20`).all();
+      } else {
+        rows = await env.DB.prepare(`SELECT u.telegram_id, u.username, u.first_name, u.photo_url,
+          (SELECT COALESCE(SUM(l.amount),0) FROM ledger l WHERE l.user_id = u.telegram_id AND l.reason IN ('bet','win')) AS value
+          FROM users u ORDER BY value DESC LIMIT 20`).all();
+        rows = { results: rows.results.filter((r: any) => r.value !== 0) };
+      }
+      const top = rows.results.map((r: any) => ({
+        ...r,
+        isAdmin: String(env.ADMIN_ID ?? '') !== '' && String(r.telegram_id) === String(env.ADMIN_ID),
+      }));
+      return json({ ok: true, top, type });
     }
 
     /* ---------- /api/daily ---------- */
