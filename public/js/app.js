@@ -123,14 +123,13 @@ function renderProfile(){
   const s = state.stats ?? {};
   const stats = el('div','stats-grid');
   stats.append(
-    statBox('Игр сыграно', fmt(s.games ?? 0)),
-    statBox('Поставлено', fmt(s.wagered ?? 0) + ' ₽'),
-    statBox('Выиграно', fmt(s.won ?? 0) + ' ₽'),
-    statBox('Профит', fmt(s.profit ?? 0) + ' ₽', (s.profit ?? 0) >= 0),
-    statBox('Лучший выигрыш', fmt(s.biggest ?? 0) + ' ₽'),
-    statBox('Серия дней', (u?.streak ?? 0) + ' 🔥'),
+    statBox('games','Игр сыграно', fmt(s.games ?? 0)),
+    statBox('wagered','Поставлено', fmt(s.wagered ?? 0) + ' ₽'),
+    statBox('won','Выиграно', fmt(s.won ?? 0) + ' ₽'),
+    statBox('profit','Профит', fmt(s.profit ?? 0) + ' ₽', (s.profit ?? 0) >= 0),
+    statBox('biggest','Лучший выигрыш', fmt(s.biggest ?? 0) + ' ₽'),
+    statBox('streak','Серия дней', (u?.streak ?? 0) + ' 🔥'),
   );
-
   wrap.append(head, balance, stats);
 
   if (u?.isAdmin){
