@@ -72,6 +72,22 @@ async function saveSession(env: any, sid: string, uid: number, game: string, dat
 }
 async function ledger(env: any, uid: number, amount: number, reason: string, game: string) {
   await env.DB.prepare('INSERT INTO ledger (user_id,amount,reason,game,created_at) VALUES (?,?,?,?,?)').bind(uid, amount, reason, game, Date.now()).run();
+  if (reason === 'bet') await maybeRefReward(env, uid);
+}
+
+/* друг сделал 3 ставки → обоим по 50 ₽ */
+async function maybeRefReward(env: any, uid: number) {
+  try {
+    const u: any = await env.DB.prepare('SELECT ref_id, ref_rewarded FROM users WHERE telegram_id = ?').bind(uid).first();
+    if (!u?.ref_id || u?.ref_rewarded) return;
+    const bets: any = await env.DB.prepare('SELECT COUNT(*) AS c FROM ledger WHERE user_id = ? AND amount < 0').bind(uid).first();
+    if ((bets?.c ?? 0) < 3) return;
+    await env.DB.prepare('UPDATE users SET ref_rewarded = 1 WHERE telegram_id = ?').bind(uid).run();
+    await credit(env, uid, 50);
+    await env.DB.prepare('INSERT INTO ledger (user_id,amount,reason,game,created_at) VALUES (?,?,?,?,?)').bind(uid, 50, 'ref', null, Date.now()).run();
+    await credit(env, u.ref_id, 50);
+    await env.DB.prepare('INSERT INTO ledger (user_id,amount,reason,game,created_at) VALUES (?,?,?,?,?)').bind(u.ref_id, 50, 'ref', null, Date.now()).run();
+  } catch {}
 }
 const isAdmin = (env: any, uid: number) => String(env.ADMIN_ID ?? '') !== '' && String(uid) === String(env.ADMIN_ID);
 
