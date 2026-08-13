@@ -120,7 +120,7 @@ export default {
     /* ---------- /api/top ---------- */
     if (url.pathname === '/api/top') {
       const rows: any = await env.DB.prepare(`SELECT u.username, u.first_name, u.photo_url,
-        (SELECT COALESCE(SUM(l.amount),0) FROM ledger l WHERE l.user_id = u.telegram_id) AS profit
+                (SELECT COALESCE(SUM(l.amount),0) FROM ledger l WHERE l.user_id = u.telegram_id AND l.reason IN ('bet','win')) AS profit
         FROM users u ORDER BY profit DESC LIMIT 20`).all();
       return json({ ok: true, top: rows.results.filter((r: any) => r.profit > 0) });
     }
