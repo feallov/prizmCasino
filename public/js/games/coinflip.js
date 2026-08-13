@@ -1,4 +1,4 @@
-import { el, haptic, makeBetRow } from '../ui.js';
+import { el, haptic, fmt, makeBetRow } from '../ui.js';
 import { play } from '../api.js';
 
 export function renderCoinflip(app){
@@ -28,8 +28,8 @@ export function renderCoinflip(app){
   const coin = wrap.querySelector('.coin');
   const res = wrap.querySelector('.result-pill');
   const ch = [...wrap.querySelectorAll('.choice')];
-  ch[0].onclick = () => { choice = 'heads'; ch[0].classList.add('active'); ch[1].classList.remove('active'); haptic(tg); };
-  ch[1].onclick = () => { choice = 'tails'; ch[1].classList.add('active'); ch[0].classList.remove('active'); haptic(tg); };
+  ch[0].onclick = () => { if(!busy){ choice = 'heads'; ch[0].classList.add('active'); ch[1].classList.remove('active'); haptic(tg); } };
+  ch[1].onclick = () => { if(!busy){ choice = 'tails'; ch[1].classList.add('active'); ch[0].classList.remove('active'); haptic(tg); } };
 
   const bets = makeBetRow(() => state.balance, v => bet = v);
   const go = el('button','cta','Бросить • x2');
@@ -38,16 +38,19 @@ export function renderCoinflip(app){
 
   go.onclick = async () => {
     if (busy) return; busy = true; go.disabled = true; res.hidden = true;
+    bets.el.style.display = 'none';
+    ch.forEach(c => c.disabled = true);
     stage.classList.remove('win','lose');
     haptic(tg, 'medium');
 
     const d = await play(tg, 'coinflip', { bet, choice });
     if (!d.ok){
       busy = false; go.disabled = false;
-      toast(d.error === 'low_balance' ? 'Не хватает осколков' : 'Ошибка');
+      bets.el.style.display = '';
+      ch.forEach(c => c.disabled = false);
+      toast(d.error === 'low_balance' ? 'Не хватает рублей' : 'Ошибка');
       return;
     }
-    state.balance = d.balance; syncTop();
 
     const from = base + off;
     base += 1800;
@@ -60,12 +63,16 @@ export function renderCoinflip(app){
     anim.onfinish = () => {
       coin.style.transform = `rotateY(${to}deg)`;
       const win = d.side === choice;
+      state.balance = d.balance; syncTop();
       res.hidden = false;
       res.className = `result-pill ${win ? 'win' : 'lose'}`;
-      res.textContent = win ? `+${d.payout} 💎` : `−${bet} 💎`;
+      const profit = d.payout - bet;
+      res.textContent = win ? `+${fmt(profit)} ₽` : `−${fmt(bet)} ₽`;
       stage.classList.add(win ? 'win' : 'lose');
       try { tg?.HapticFeedback?.notificationOccurred(win ? 'success' : 'error'); } catch {}
       busy = false; go.disabled = false;
+      bets.el.style.display = '';
+      ch.forEach(c => c.disabled = false);
     };
   };
 
