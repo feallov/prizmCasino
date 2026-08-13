@@ -16,6 +16,11 @@ export function renderAdmin(app){
       <b style="color:var(--text)">Промокоды</b>
       <div id="p-list" style="color:var(--muted);font-size:13px">загружаем...</div>
     </div>
+        <div class="admin-section glass">
+      <b style="color:var(--text)">Вебхук бота</b>
+      <button class="cta" id="wh-set">🔗 Привязать вебхук (рефералка)</button>
+      <div id="wh-status" style="color:var(--muted);font-size:12px">нажми один раз после деплоя</div>
+    </div>
     <div class="admin-section glass">
       <b style="color:var(--text)">Выдать / снять ₽</b>
       <input class="admin-input" id="u-id" placeholder="Telegram ID" type="number" />
@@ -88,6 +93,12 @@ export function renderAdmin(app){
       list.append(row);
     }
   }
+
+    wrap.querySelector('#wh-set').onclick = async () => {
+    const d = await api('webhook', {});
+    wrap.querySelector('#wh-status').textContent = d.ok ? 'вебхук установлен ✅' : ('ошибка: ' + (d.desc ?? 'неизвестно'));
+    toast(d.ok ? 'Вебхук установлен' : 'Ошибка вебхука');
+  };
 
   loadPromos(); loadUsers();
   return wrap;
