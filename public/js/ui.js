@@ -21,7 +21,7 @@ export function makeBetRow(getBalance, onSet){
   const set = v => {
     const maxB = Math.max(1, getBalance() || 1);
     bet = Math.max(1, Math.min(v, maxB));
-    view.textContent = `${fmt(bet)} 💎`;
+    view.textContent = `${fmt(bet)} ₽`;
     chips.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', +c.dataset.v === bet));
     onSet(bet);
   };
