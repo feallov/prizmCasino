@@ -43,27 +43,30 @@ export function renderMines(app){
     countBtns.forEach(b => b.disabled = false);
     bets.el.style.display = '';
     go.textContent = 'Начать';
+    res.hidden = true;
   }
 
   async function pick(i, c){
     if (!active || busy) return; busy = true; haptic(tg);
+    cells.forEach(x => x.disabled = true);
     const d = await play(tg, 'mines_pick', { sid, cell: i });
     busy = false;
-    if (!d.ok) return toast('Ошибка');
+    if (!d.ok){ toast('Ошибка'); cells.forEach(x => x.disabled = false); return; }
     if (d.boom){
       c.classList.add('boom'); c.textContent = '💥';
       d.mines.forEach(m => { if (m !== i){ cells[m].classList.add('mine'); cells[m].textContent = '💣'; } });
       cells.forEach(x => x.disabled = true);
       const st = wrap.querySelector('.stage');
       st.classList.add('lose');
-      res.hidden = false; res.className = 'result-pill lose'; res.textContent = `−${fmt(bet)} 💎`;
+      res.hidden = false; res.className = 'result-pill lose'; res.textContent = `−${fmt(bet)} ₽`;
       try { tg?.HapticFeedback?.notificationOccurred('error'); } catch {}
       setTimeout(reset, 1600);
       return;
     }
     c.classList.add('safe'); c.textContent = '💎';
     mult = d.mult;
-    go.textContent = `Забрать • x${mult}`;
+    go.textContent = `Забрать • x${mult} (${fmt(Math.floor(bet*mult) - bet)} ₽)`;
+    cells.forEach(x => x.disabled = false);
   }
 
   go.onclick = async () => {
@@ -72,9 +75,9 @@ export function renderMines(app){
       busy = true; haptic(tg, 'medium');
       const d = await play(tg, 'mines_start', { bet, mines: mc });
       busy = false;
-      if (!d.ok) return toast(d.error === 'low_balance' ? 'Не хватает осколков' : 'Ошибка');
+      if (!d.ok){ toast(d.error === 'low_balance' ? 'Не хватает рублей' : 'Ошибка'); return; }
       sid = d.sid; active = true; mult = 1;
-      state.balance = state.balance - bet; syncTop();
+      state.balance -= bet; syncTop();
       cells.forEach(c => { c.className = 'mcell'; c.textContent = ''; c.disabled = false; });
       countBtns.forEach(b => b.disabled = true);
       bets.el.style.display = 'none';
@@ -84,13 +87,15 @@ export function renderMines(app){
       return;
     }
     busy = true; haptic(tg, 'medium');
+    cells.forEach(x => x.disabled = true);
     const d = await play(tg, 'mines_cash', { sid });
     busy = false;
-    if (!d.ok) return toast('Ошибка');
+    if (!d.ok){ toast('Ошибка'); cells.forEach(x => x.disabled = false); return; }
     state.balance = d.balance; syncTop();
     const st = wrap.querySelector('.stage');
     st.classList.add('win');
-    res.hidden = false; res.className = 'result-pill win'; res.textContent = `+${fmt(d.payout)} 💎`;
+    const profit = d.payout - bet;
+    res.hidden = false; res.className = 'result-pill win'; res.textContent = `+${fmt(profit)} ₽`;
     try { tg?.HapticFeedback?.notificationOccurred('success'); } catch {}
     cells.forEach(x => x.disabled = true);
     setTimeout(reset, 1400);
