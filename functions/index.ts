@@ -507,7 +507,7 @@ export default {
       s.data.done = true; await saveSession(env, body.sid, uid, 'hilo', s.data);
       const balance = await credit(env, uid, payout);
       await ledger(env, uid, payout, 'win', 'hilo');
-      return json({ ok: true, payout, balance });
+      return json({ ok: true, promos: rows.results });
     }
 
     return json({ error: 'unknown_game' }, 400);
