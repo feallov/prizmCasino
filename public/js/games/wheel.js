@@ -30,6 +30,11 @@ export function renderWheel(app){
   const wheel = wrap.querySelector('.wheel');
   const res = wrap.querySelector('.result-pill');
   wheel.style.background = `conic-gradient(${SEG.map((s,i) => `${s.c} ${i*36}deg ${(i+1)*36}deg`).join(',')})`;
+  SEG.forEach((s, i) => {
+    const l = el('span','wlabel', s.m + 'x');
+    l.style.transform = `rotate(${i*36 + 18}deg) translateY(-78px)`;
+    wheel.append(l);
+  });
 
   const bets = makeBetRow(() => state.balance, v => bet = v);
   const go = el('button','cta','Крутить');
