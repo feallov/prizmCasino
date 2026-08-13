@@ -75,6 +75,17 @@ async function ledger(env: any, uid: number, amount: number, reason: string, gam
   await env.DB.prepare('INSERT INTO ledger (user_id,amount,reason,game,created_at) VALUES (?,?,?,?,?)').bind(uid, amount, reason, game, Date.now()).run();
 }
 const isAdmin = (env: any, uid: number) => String(env.ADMIN_ID ?? '') !== '' && String(uid) === String(env.ADMIN_ID);
+async function checkSub(env: any, uid: number): Promise<{ sub: boolean; err?: string }> {
+  try {
+    const chat = env.CHANNEL_ID || CHANNEL;
+    const r = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/getChatMember?chat_id=${encodeURIComponent(chat)}&user_id=${uid}`);
+    const d: any = await r.json();
+    if (!d.ok) return { sub: false, err: d.description };
+    return { sub: ['creator','administrator','member','restricted'].includes(d?.result?.status) };
+  } catch (e: any) {
+    return { sub: false, err: String(e) };
+  }
+}
 
 const TASKS: { id: string; title: string; reward: number }[] = [
   { id: 'sub',     title: 'Подписаться на канал',      reward: 50 },
@@ -168,17 +179,13 @@ async function handle(request: Request, env: any): Promise<Response> {
       const bets: any = await env.DB.prepare('SELECT COUNT(*) c FROM ledger WHERE user_id = ? AND amount < 0').bind(uid).first();
       const big: any = await env.DB.prepare('SELECT MAX(amount) m FROM ledger WHERE user_id = ? AND reason = \'win\'').bind(uid).first();
       const st: any = await env.DB.prepare('SELECT COALESCE(SUM(amount),0) p FROM ledger WHERE user_id = ?').bind(uid).first();
-      let sub = false;
-      try {
-        const r = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/getChatMember?chat_id=${encodeURIComponent(CHANNEL)}&user_id=${uid}`);
-        const d: any = await r.json();
-        sub = ['creator','administrator','member','restricted'].includes(d?.result?.status);
-      } catch {}
+           const sc = await checkSub(env, uid);
+      const sub = sc.sub;
       const ready: Record<string, boolean> = {
         sub, first: (bets?.c ?? 0) >= 1, bets10: (bets?.c ?? 0) >= 10,
         bigwin: (big?.m ?? 0) >= 500, profit1k: (st?.p ?? 0) >= 1000,
-      };
-      return json({ ok: true, tasks: TASKS.map(t => ({ ...t, done: doneIds.has(t.id), ready: !!ready[t.id] })) });
+      };      
+      return json({ ok: true, subError: sc.err ?? null, tasks: TASKS.map(t => ({ ...t, done: doneIds.has(t.id), ready: !!ready[t.id] })) });
     }
     if (url.pathname === '/api/task_claim') {
       const t = TASKS.find(x => x.id === body.task);
