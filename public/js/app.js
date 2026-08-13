@@ -22,6 +22,23 @@ const TABS = [
 const SCREENS = Object.fromEntries(TABS.map(t => [t.id, t]));
 SCREENS.profile = { render: renderProfile };
 
+/* 13 игр, у каждой свой цвет */
+const GAMES = [
+  { t:'Coinflip',  e:'🪙', max:'макс 9 000 💎',  g:'linear-gradient(160deg,#8ecdf8,#4aa8ef 55%,#2f7fd6)', featured:true, isNew:true },
+  { t:'Wheel',     e:'🎡', max:'макс 10 000 💎', g:'linear-gradient(160deg,#86efac,#22c55e 50%,#0d9488)' },
+  { t:'Mines',     e:'💣', max:'макс 10 000 💎', g:'linear-gradient(160deg,#4c3a9e,#241b52 60%,#141034)', stars:true },
+  { t:'Crash',     e:'🚀', max:'макс 50 000 💎', g:'linear-gradient(160deg,#f87171,#ef4444 55%,#b91c1c)', isNew:true },
+  { t:'Ladder',    e:'🪜', max:'макс 9 000 💎',  g:'linear-gradient(160deg,#c4b5fd,#8b5cf6 55%,#6d28d9)' },
+  { t:'Dice',      e:'🎲', max:'макс 5 000 💎',  g:'linear-gradient(160deg,#cbd5e1,#64748b 60%,#334155)' },
+  { t:'Slots',     e:'🎰', max:'макс 25 000 💎', g:'linear-gradient(160deg,#fcd34d,#f59e0b 55%,#d97706)' },
+  { t:'Roulette',  e:'🎯', max:'макс 10 000 💎', g:'linear-gradient(160deg,#4b5563,#1f2937 60%,#111827)' },
+  { t:'Blackjack', e:'🃏', max:'макс 15 000 💎', g:'linear-gradient(160deg,#34d399,#059669 55%,#065f46)' },
+  { t:'Cases',     e:'📦', max:'макс 20 000 💎', g:'linear-gradient(160deg,#fdba74,#f97316 55%,#c2410c)' },
+  { t:'RPS',       e:'✌️', max:'макс 3 000 💎',  g:'linear-gradient(160deg,#5eead4,#14b8a6 55%,#0f766e)' },
+  { t:'Plinko',    e:'⚪', max:'макс 12 000 💎', g:'linear-gradient(160deg,#f9a8d4,#ec4899 55%,#be185d)', isNew:true },
+  { t:'Hi-Lo',     e:'📈', max:'макс 8 000 💎',  g:'linear-gradient(160deg,#67e8f9,#06b6d4 55%,#0e7490)' },
+];
+
 let toastT;
 function toast(text){
   let t = $('#toast');
@@ -33,17 +50,35 @@ function toast(text){
 }
 
 function soon(title){
-  return () => el('div','panel',`<div style="font-size:34px">🚧</div><b style="color:var(--text)">${title}</b><span>появится скоро</span>`);
+  return () => el('div','panel',`<div style="font-size:34px"></div><b style="color:var(--text)">${title}</b><span>появится скоро</span>`);
 }
 
 function gameCard(o){
-  const c = el('div',`card shine ${o.cls ?? ''} ${o.grad}`);
+  const c = el('div',`card shine ${o.featured ? 'featured' : ''} ${o.stars ? 'stars' : ''}`);
+  c.style.background = o.g;
   c.innerHTML =
     (o.isNew ? '<span class="badge-new">🔥 NEW</span>' : '') +
     (o.online != null ? `<span class="online-pill"><i></i>${o.online}</span>` : '') +
-    `<div class="art">${o.emoji}</div><div class="title">${o.title}</div>` +
-    (o.pill ? `<div class="max-pill">${o.pill}</div>` : '');
-  c.onclick = () => { haptic(tg); toast(`${o.title} — скоро`); };
+    `<div class="art">${o.e}</div><div class="title">${o.t}</div>` +
+    (o.max ? `<div class="max-pill">${o.max}</div>` : '');
+  c.onclick = () => { haptic(tg); toast(`${o.t} — скоро`); };
+  return c;
+}
+
+function wideCard(emoji, title, sub){
+  const c = el('div','card shine');
+  c.style.background = 'linear-gradient(160deg,#26282e,#17181c 70%)';
+  c.style.minHeight = '64px';
+  c.style.flexDirection = 'row';
+  c.style.alignItems = 'center';
+  c.style.justifyContent = 'flex-start';
+  c.style.gap = '12px';
+  c.style.padding = '14px 16px';
+  c.innerHTML =
+    `<div class="art" style="position:static;transform:none;font-size:26px;filter:none">${emoji}</div>` +
+    `<div class="title" style="font-size:15px;text-shadow:none">${title}</div>` +
+    `<div class="max-pill" style="margin-left:auto">${sub}</div>`;
+  c.onclick = () => { haptic(tg); toast(`${title} — скоро`); };
   return c;
 }
 
@@ -57,14 +92,15 @@ function renderLobby(){
   }
   wrap.append(icons);
 
-  wrap.append(gameCard({ cls:'featured', grad:'g-blue', emoji:'🪙', title:'Coinflip', pill:'макс 9 000 💎', online:state.online, isNew:true }));
-
   const grid = el('div','grid2');
-  grid.append(gameCard({ grad:'g-green', emoji:'🎡', title:'Wheel', pill:'макс 10 000 💎', online:state.online }));
-  grid.append(gameCard({ grad:'g-space stars', emoji:'💣', title:'Mines', pill:'макс 10 000 💎', online:state.online }));
-  grid.append(gameCard({ grad:'g-gold', emoji:'🎁', title:'Дейлик', pill:'бонус 🎁' }));
-  grid.append(gameCard({ grad:'g-gray', emoji:'🏆', title:'Ивент', pill:'скоро', isNew:true }));
+  GAMES.forEach((gm,i)=>{
+    const card = gameCard({ ...gm, online: 2 + (i*7 + state.online) % 18 });
+    if (gm.featured) wrap.append(card); else grid.append(card);
+  });
   wrap.append(grid);
+
+  wrap.append(wideCard('🎁','Ежедневный бонус','скоро'));
+  wrap.append(wideCard('✈️','Подписаться на канал','+50 💎'));
   return wrap;
 }
 
