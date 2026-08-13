@@ -135,11 +135,17 @@ async function handle(request: Request, env: any): Promise<Response> {
   }
 
   /* ---------- /api/balance (live) ---------- */
-  if (url.pathname === '/api/balance') {
+    if (url.pathname === '/api/balance') {
     const r: any = await env.DB.prepare('SELECT balance FROM users WHERE telegram_id = ?').bind(uid).first();
-    return json({ ok: true, balance: r?.balance ?? 0 });
+    const st: any = await env.DB.prepare(`SELECT
+      COUNT(CASE WHEN amount < 0 THEN 1 END) AS games,
+      COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END),0) AS wagered,
+      COALESCE(SUM(CASE WHEN amount > 0 AND reason = 'win' THEN amount ELSE 0 END),0) AS won,
+      COALESCE(MAX(CASE WHEN reason = 'win' THEN amount ELSE 0 END),0) AS biggest
+      FROM ledger WHERE user_id = ?`).bind(uid).first();
+    return json({ ok: true, balance: r?.balance ?? 0,
+      stats: { games: st?.games ?? 0, wagered: st?.wagered ?? 0, won: st?.won ?? 0, biggest: st?.biggest ?? 0, profit: (st?.won ?? 0) - (st?.wagered ?? 0) } });
   }
-
   /* ---------- /api/top ---------- */
   if (url.pathname === '/api/top') {
     const type = body.type === 'profit' ? 'profit' : 'balance';
