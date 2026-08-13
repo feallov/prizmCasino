@@ -1,4 +1,3 @@
-// Точка входа: роутер API. Статика отдаётся сама из [assets].
 import { validateInitData } from './lib/auth';
 import { ensureSchema, getOrCreateUser } from './lib/db';
 
@@ -21,6 +20,7 @@ export default {
 
       await ensureSchema(env.DB);
       const row: any = await getOrCreateUser(env.DB, tgUser);
+      const on: any = await env.DB.prepare('SELECT COUNT(*) AS c FROM users WHERE last_seen > ?').bind(Date.now() - 5*60*1000).first();
 
       return json({
         user: {
@@ -30,6 +30,7 @@ export default {
           photo_url: row.photo_url,
           balance: row.balance,
         },
+        online: on?.c ?? 1,
       });
     }
 
