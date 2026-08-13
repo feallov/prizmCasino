@@ -162,8 +162,6 @@ export default {
       if (!t) return json({ error: 'unknown' }, 400);
       const chk: any = await env.DB.prepare('SELECT 1 x FROM tasks_done WHERE user_id = ? AND task_id = ?').bind(uid, t.id).first();
       if (chk) return json({ error: 'done' }, 400);
-      const list: any = await fetch(`https://request.local/api/tasks`, { method: 'POST', body: JSON.stringify(body) }).catch(() => null) ?? null;
-      // проверка условий напрямую:
       let ok = false;
       if (t.id === 'sub') {
         try {
