@@ -5,6 +5,8 @@ import { renderMines } from './games/mines.js';
 import { renderCrash } from './games/crash.js';
 import { renderLadder } from './games/ladder.js';
 import { renderDice } from './games/dice.js';
+import { renderSlots } from './games/slots.js';
+import { renderRoulette } from './games/roulette.js';
 
 const tg = window.Telegram?.WebApp;
 try{
@@ -37,6 +39,8 @@ SCREENS.mines = { render: renderMines };
 SCREENS.crash = { render: renderCrash };
 SCREENS.ladder = { render: renderLadder };
 SCREENS.dice = { render: renderDice };
+SCREENS.slots = { render: renderSlots };
+SCREENS.roulette = { render: renderRoulette };
 
 const GAMES = [
   { t:'Coinflip',  e:'🪙', max:'макс 9 000 💎',  g:'linear-gradient(160deg,#8ecdf8,#4aa8ef 55%,#2f7fd6)', featured:true, isNew:true, screen:'coinflip' },
@@ -45,8 +49,8 @@ const GAMES = [
   { t:'Crash',     e:'🚀', max:'макс 50 000 💎', g:'linear-gradient(160deg,#f87171,#ef4444 55%,#b91c1c)', isNew:true, screen:'crash' },
   { t:'Ladder',    e:'🪜', max:'макс 9 000 💎',  g:'linear-gradient(160deg,#c4b5fd,#8b5cf6 55%,#6d28d9)', screen:'ladder' },
   { t:'Dice',      e:'🎲', max:'макс 5 000 💎',  g:'linear-gradient(160deg,#cbd5e1,#64748b 60%,#334155)', screen:'dice' },
-  { t:'Slots',     e:'🎰', max:'макс 25 000 💎', g:'linear-gradient(160deg,#fcd34d,#f59e0b 55%,#d97706)' },
-  { t:'Roulette',  e:'🎯', max:'макс 10 000 💎', g:'linear-gradient(160deg,#4b5563,#1f2937 60%,#111827)' },
+  { t:'Slots',     e:'🎰', max:'макс 25 000 💎', g:'linear-gradient(160deg,#fcd34d,#f59e0b 55%,#d97706)', screen:'slots' },
+  { t:'Roulette',  e:'🎯', max:'макс 10 000 💎', g:'linear-gradient(160deg,#4b5563,#1f2937 60%,#111827)', screen:'roulette' },
   { t:'Blackjack', e:'🃏', max:'макс 15 000 💎', g:'linear-gradient(160deg,#34d399,#059669 55%,#065f46)' },
   { t:'Cases',     e:'📦', max:'макс 20 000 💎', g:'linear-gradient(160deg,#fdba74,#f97316 55%,#c2410c)' },
   { t:'RPS',       e:'✌️', max:'макс 3 000 💎',  g:'linear-gradient(160deg,#5eead4,#14b8a6 55%,#0f766e)' },
