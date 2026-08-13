@@ -6,13 +6,12 @@ try{
   tg?.setHeaderColor?.('#0b0d10'); tg?.setBackgroundColor?.('#0b0d10');
 }catch{}
 
-const state = { user:null, balance:null, online:1, perGame:{}, stats:null, screen:'lobby' };
+const state = { user:null, balance:0, online:1, perGame:{}, stats:null, screen:'lobby' };
 
 const I = {
   home:'<svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>',
   trophy:'<svg viewBox="0 0 24 24"><path d="M8 21h8M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0Z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg>',
   tasks:'<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="5"/><path d="m9 12.5 2.5 2.5L16 9.5"/></svg>',
-  crown:'<svg viewBox="0 0 24 24"><path d="m3 8 4 4 5-6 5 6 4-4v11H3Z"/></svg>',
 };
 
 function soon(title){
@@ -92,6 +91,11 @@ function renderLobby(){
   const promo = el('button','round','🎟️');
   promo.onclick = () => { haptic(tg); show('promo'); };
   icons.append(news, promo);
+  if (state.user?.isAdmin){
+    const adm = el('button','round','⚙️');
+    adm.onclick = () => { haptic(tg); show('admin'); };
+    icons.append(adm);
+  }
   wrap.append(icons);
 
   const grid = el('div','grid2');
@@ -113,7 +117,7 @@ function renderProfile(){
   if (u?.isAdmin) info.innerHTML += `<div class="admin-badge">ADMIN</div>`;
   head.append(ava, info);
 
-  const balance = el('div','panel',`<span>Баланс</span><b class="big-num">${state.balance!=null?fmt(state.balance)+' ₽':'—'}</b>`);
+  const balance = el('div','panel',`<span>Баланс</span><b class="big-num">${fmt(state.balance)} ₽</b>`);
   balance.style.marginTop = '12px';
 
   const s = state.stats ?? {};
@@ -174,7 +178,7 @@ function buildChrome(){
 }
 
 function syncTop(){
-  $('#balance').textContent = state.balance != null ? `${fmt(state.balance)} ₽` : '— ₽';
+  $('#balance').textContent = `${fmt(state.balance)} ₽`;
   $('#online').textContent = state.online;
 }
 
@@ -221,7 +225,7 @@ async function boot(){
     if(r.ok){
       const d = await r.json();
       state.user = { ...d.user };
-      state.balance = d.user.balance;
+      state.balance = d.user.balance ?? 0;
       state.online = d.online ?? state.online;
       state.perGame = d.perGame ?? {};
       state.stats = d.stats ?? null;
