@@ -54,7 +54,8 @@ export function renderBlackjack(app){
     stage.classList.remove('win','lose');
   }
 
-  function finish(win, text){
+  function finish(win, text, finalBal){
+    if (finalBal != null){ state.balance = finalBal; syncTop(); }
     res.hidden = false;
     res.className = `result-pill ${win ? 'win' : 'lose'}`;
     res.textContent = text;
@@ -67,20 +68,20 @@ export function renderBlackjack(app){
     if (busy) return; busy = true; haptic(tg, 'medium');
     const d = await play(tg, 'blackjack_start', { bet });
     busy = false;
-    if (!d.ok) return toast(d.error === 'low_balance' ? 'Не хватает осколков' : 'Ошибка');
+    if (!d.ok){ toast(d.error === 'low_balance' ? 'Не хватает рублей' : 'Ошибка'); return; }
     sid = d.sid;
-    state.balance = state.balance - bet; syncTop();
+    state.balance -= bet; syncTop();
     ph.replaceChildren(...d.player.map(c => cardEl(c)));
     dh.replaceChildren(cardEl(d.dealerTop), cardEl(null, true));
     res.hidden = true;
     stage.classList.remove('win','lose');
+    bets.el.style.display = 'none'; go.style.display = 'none';
     if (d.done){
-      state.balance = d.balance; syncTop();
-      finish(d.payout >= bet, d.payout > bet ? `БЛЭКДЖЕК! +${fmt(d.payout)} 💎` : (d.payout > 0 ? `Ничья • возврат` : `−${fmt(bet)} 💎`));
+      const profit = d.payout - bet;
+      finish(d.payout >= bet, d.payout > bet ? `БЛЭКДЖЕК! +${fmt(profit)} ₽` : (d.payout > 0 ? `Ничья • возврат` : `−${fmt(bet)} ₽`), d.balance);
       return;
     }
     active = true;
-    bets.el.style.display = 'none'; go.style.display = 'none';
     bj.hidden = false;
   };
 
@@ -88,13 +89,13 @@ export function renderBlackjack(app){
     if (!active || busy) return; busy = true; haptic(tg);
     const d = await play(tg, 'blackjack_hit', { sid });
     busy = false;
-    if (!d.ok) return;
+    if (!d.ok){ toast('Ошибка'); return; }
     ph.append(cardEl(d.card));
     if (d.bust){
       active = false;
       dh.replaceChildren(...d.dealer.map(c => cardEl(c)));
       bj.hidden = true; go.style.display = ''; bets.el.style.display = '';
-      finish(false, `Перебор ${d.v} • −${fmt(bet)} 💎`);
+      finish(false, `Перебор ${d.v} • −${fmt(bet)} ₽`);
     }
   };
 
@@ -102,14 +103,18 @@ export function renderBlackjack(app){
     if (!active || busy) return; busy = true; haptic(tg, 'medium');
     const d = await play(tg, 'blackjack_stand', { sid });
     busy = false;
-    if (!d.ok) return;
+    if (!d.ok){ toast('Ошибка'); return; }
     active = false;
     dh.replaceChildren(...d.dealer.map(c => cardEl(c)));
     bj.hidden = true; go.style.display = ''; bets.el.style.display = '';
-    state.balance = d.balance; syncTop();
-    if (d.result === 'win') finish(true, `+${fmt(d.payout)} 💎`);
-    else if (d.result === 'push') finish(true, `Ничья • возврат ${fmt(d.payout)} 💎`);
-    else finish(false, `−${fmt(bet)} 💎`);
+    if (d.result === 'win'){
+      const profit = d.payout - bet;
+      finish(true, `+${fmt(profit)} ₽`, d.balance);
+    } else if (d.result === 'push'){
+      finish(true, `Ничья • возврат ${fmt(d.payout)} ₽`, d.balance);
+    } else {
+      finish(false, `−${fmt(bet)} ₽`, d.balance);
+    }
   };
 
   return wrap;
