@@ -1,4 +1,4 @@
-export const START_BALANCE = 1000;
+export const START_BALANCE = 100;
 
 let schemaReady = false;
 
@@ -28,6 +28,26 @@ export async function ensureSchema(db: any) {
     data TEXT NOT NULL,
     created_at INTEGER NOT NULL
   )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS promos (
+    code TEXT PRIMARY KEY,
+    amount INTEGER NOT NULL,
+    max_uses INTEGER NOT NULL,
+    uses INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS promo_used (
+    code TEXT NOT NULL,
+    user_id INTEGER NOT NULL,
+    PRIMARY KEY(code, user_id)
+  )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS tasks_done (
+    task_id TEXT NOT NULL,
+    user_id INTEGER NOT NULL,
+    PRIMARY KEY(task_id, user_id)
+  )`).run();
+  for (const col of ['last_game TEXT', 'last_daily INTEGER DEFAULT 0', 'streak INTEGER DEFAULT 0']) {
+    try { await db.prepare(`ALTER TABLE users ADD COLUMN ${col}`).run(); } catch {}
+  }
   schemaReady = true;
 }
 
