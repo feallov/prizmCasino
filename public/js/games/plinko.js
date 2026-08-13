@@ -47,15 +47,17 @@ export function renderPlinko(app){
   go.onclick = async () => {
     if (busy) return; busy = true; go.disabled = true;
     res.hidden = true; stage.classList.remove('win','lose');
+    bets.el.style.display = 'none';
     [...bucketsEl.children].forEach(b => b.classList.remove('hit'));
     setBall(0, 0);
     haptic(tg, 'medium');
     const d = await play(tg, 'plinko', { bet });
     if (!d.ok){
       busy = false; go.disabled = false;
-      return toast(d.error === 'low_balance' ? 'Не хватает осколков' : 'Ошибка');
+      bets.el.style.display = '';
+      toast(d.error === 'low_balance' ? 'Не хватает рублей' : 'Ошибка');
+      return;
     }
-    state.balance = d.balance; syncTop();
 
     let sum = 0;
     d.path.forEach((step, i) => {
@@ -67,14 +69,16 @@ export function renderPlinko(app){
     });
 
     setTimeout(() => {
+      state.balance = d.balance; syncTop();
       [...bucketsEl.children][d.bucket].classList.add('hit');
       const profit = d.payout - bet;
       res.hidden = false;
       res.className = `result-pill ${profit > 0 ? 'win' : 'lose'}`;
-      res.textContent = `x${d.mult} • ${profit >= 0 ? '+' : '−'}${fmt(Math.abs(profit))} 💎`;
+      res.textContent = `x${d.mult} • ${profit >= 0 ? '+' : '−'}${fmt(Math.abs(profit))} ₽`;
       stage.classList.add(profit > 0 ? 'win' : 'lose');
       try { tg?.HapticFeedback?.notificationOccurred(profit > 0 ? 'success' : 'error'); } catch {}
       busy = false; go.disabled = false;
+      bets.el.style.display = '';
     }, 240 * 9 + 200);
   };
 
