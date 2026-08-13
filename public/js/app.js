@@ -27,6 +27,7 @@ const SCREENS = Object.fromEntries(TABS.map(t => [t.id, t]));
 SCREENS.profile = { render: renderProfile };
 SCREENS.admin = { renderLazy: () => import('./screens/admin.js').then(m => m.renderAdmin) };
 SCREENS.promo = { renderLazy: () => import('./screens/promo.js').then(m => m.renderPromo) };
+SCREENS.ref = { renderLazy: () => import('./screens/ref.js').then(m => m.renderRef) };
 
 const GAMES = [
   { t:'Coinflip',  e:'🪙', g:'linear-gradient(160deg,#8ecdf8,#4aa8ef 55%,#2f7fd6)', featured:true, isNew:true, screen:'coinflip' },
