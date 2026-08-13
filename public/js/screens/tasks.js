@@ -1,4 +1,4 @@
-import { el, fmt, haptic } from '../ui.js';
+import { el, haptic } from '../ui.js';
 
 export function renderTasks(app){
   const { tg, state, syncTop, toast, show } = app;
@@ -57,6 +57,7 @@ export function renderTasks(app){
     body: JSON.stringify({ initData: tg?.initData ?? '' })
   }).then(r => r.json()).then(d => {
     if (!d.ok) return;
+    if (d.subError) toast('TG: ' + d.subError);
     list.replaceChildren();
     for (const t of d.tasks){
       const row = el('div','task-row glass');
@@ -78,7 +79,7 @@ export function renderTasks(app){
             body: JSON.stringify({ initData: tg?.initData ?? '', task: t.id })
           });
           const d2 = await r.json();
-          if (!d2.ok){ btn.disabled = false; return toast(d2.error === 'not_ready' ? 'Ещё не готово' : 'Ошибка'); }
+          if (!d2.ok){ btn.disabled = false; return toast(d2.msg ?? (d2.error === 'not_ready' ? 'Ещё не готово' : 'Ошибка')); }
           state.balance = d2.balance; syncTop();
           toast(`+${d2.reward} ₽`);
           try { tg?.HapticFeedback?.notificationOccurred('success'); } catch {}
