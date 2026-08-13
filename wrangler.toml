@@ -1,0 +1,11 @@
+name = "prizmcasino"
+compatibility_date = "2026-08-01"
+main = "./dist/worker/index.js"
+
+[assets]
+directory = "./public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "prizm-db"
+database_id = "ВСТАВЬ_ID_ИЗ_D1"
