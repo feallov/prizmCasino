@@ -86,6 +86,12 @@ const TASKS: { id: string; title: string; reward: number }[] = [
 
 export default {
   async fetch(request: Request, env: any): Promise<Response> {
+    try { return await handle(request, env); }
+    catch (e: any) { return json({ error: 'exception', msg: String(e?.message ?? e) }, 500); }
+  },
+};
+
+async function handle(request: Request, env: any): Promise<Response> {
     const url = new URL(request.url);
     if (request.method !== 'POST') return json({ error: 'method' }, 405);
     if (!env.BOT_TOKEN) return json({ error: 'no_bot_token' }, 500);
@@ -514,5 +520,4 @@ export default {
     }
 
     return json({ error: 'unknown_game' }, 400);
-  },
-};
+}
