@@ -1,6 +1,7 @@
+# имя должно совпадать с именем воркера в дашборде
 name = "prizmcasino"
 compatibility_date = "2026-08-01"
-main = "./dist/worker/index.js"
+main = "./functions/index.ts"
 
 [assets]
 directory = "./public"
@@ -8,4 +9,4 @@ directory = "./public"
 [[d1_databases]]
 binding = "DB"
 database_name = "prizm-db"
-database_id = "ВСТАВЬ_ID_ИЗ_D1"
+database_id = "899ede67-84c7-4548-b244-30f5297b16c7"
