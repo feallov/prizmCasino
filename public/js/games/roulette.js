@@ -21,8 +21,8 @@ export function renderRoulette(app){
       <div class="result-pill" hidden></div>
     </div>
     <div class="choices">
-      <button class="chip rchoice red active">🔴 x2.1</button>
-      <button class="chip rchoice black">⚫ x2.1</button>
+      <button class="chip rchoice red active">🔴 x2</button>
+      <button class="chip rchoice black">⚫ x2</button>
       <button class="chip rchoice green">🟢 x14</button>
     </div>`;
 
@@ -34,10 +34,12 @@ export function renderRoulette(app){
   const btns = [...wrap.querySelectorAll('.rchoice')];
   const map = ['red','black','green'];
   btns.forEach((b,i) => b.onclick = () => {
-    choice = map[i];
-    btns.forEach(x => x.classList.remove('active'));
-    b.classList.add('active');
-    haptic(tg);
+    if(!busy){
+      choice = map[i];
+      btns.forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      haptic(tg);
+    }
   });
 
   const bets = makeBetRow(() => state.balance, v => bet = v);
@@ -47,14 +49,18 @@ export function renderRoulette(app){
 
   go.onclick = async () => {
     if (busy) return; busy = true; go.disabled = true; res.hidden = true;
+    bets.el.style.display = 'none';
+    btns.forEach(b => b.disabled = true);
     stage.classList.remove('win','lose');
     haptic(tg, 'medium');
     const d = await play(tg, 'roulette', { bet, choice });
     if (!d.ok){
       busy = false; go.disabled = false;
-      return toast(d.error === 'low_balance' ? 'Не хватает осколков' : 'Ошибка');
+      bets.el.style.display = '';
+      btns.forEach(b => b.disabled = false);
+      toast(d.error === 'low_balance' ? 'Не хватает рублей' : 'Ошибка');
+      return;
     }
-    state.balance = d.balance; syncTop();
 
     const desired = (360 - (d.n*24 + 12)) % 360;
     const delta = (desired - (rot % 360) + 360) % 360;
@@ -62,13 +68,17 @@ export function renderRoulette(app){
     wheel.style.transform = `rotate(${rot}deg)`;
 
     setTimeout(() => {
+      state.balance = d.balance; syncTop();
       const win = d.mult > 0;
       res.hidden = false;
       res.className = `result-pill ${win ? 'win' : 'lose'}`;
-      res.textContent = `${d.n} • ${d.color === 'red' ? 'красное' : d.color === 'black' ? 'чёрное' : 'зеро'} • ${win ? '+'+fmt(d.payout) : '−'+fmt(bet)} 💎`;
+      const profit = d.payout - bet;
+      res.textContent = `${d.n} • ${d.color === 'red' ? 'красное' : d.color === 'black' ? 'чёрное' : 'зеро'} • ${win ? '+'+fmt(profit) : '−'+fmt(bet)} ₽`;
       stage.classList.add(win ? 'win' : 'lose');
       try { tg?.HapticFeedback?.notificationOccurred(win ? 'success' : 'error'); } catch {}
       busy = false; go.disabled = false;
+      bets.el.style.display = '';
+      btns.forEach(b => b.disabled = false);
     }, 3300);
   };
 
