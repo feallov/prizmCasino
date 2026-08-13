@@ -116,6 +116,11 @@ export default {
         stats: { games: st?.games ?? 0, wagered: st?.wagered ?? 0, won: st?.won ?? 0, biggest: st?.biggest ?? 0, profit: (st?.won ?? 0) - (st?.wagered ?? 0) },
       });
     }
+    /* ---------- /api/balance (live) ---------- */
+    if (url.pathname === '/api/balance') {
+      const r: any = await env.DB.prepare('SELECT balance FROM users WHERE telegram_id = ?').bind(uid).first();
+      return json({ ok: true, balance: r?.balance ?? 0 });
+    }
 
     /* ---------- /api/top ---------- */
     if (url.pathname === '/api/top') {
