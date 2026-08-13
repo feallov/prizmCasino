@@ -46,19 +46,21 @@ export function renderHilo(app){
     card.className = 'pcard'; card.textContent = '—';
     bets.el.style.display = '';
     go.textContent = 'Начать';
+    hi.disabled = false; lo.disabled = false;
     stage.classList.remove('win','lose');
   }
 
   const guess = higher => async () => {
     if (!active || busy) return; busy = true; haptic(tg);
+    hi.disabled = true; lo.disabled = true;
     const d = await play(tg, 'hilo_guess', { sid, higher });
     busy = false;
-    if (!d.ok) return toast('Ошибка');
+    if (!d.ok){ toast('Ошибка'); hi.disabled = false; lo.disabled = false; return; }
     if (!d.win){
       showCard(d.next);
       active = false;
       stage.classList.add('lose');
-      res.hidden = false; res.className = 'result-pill lose'; res.textContent = `−${fmt(bet)} 💎`;
+      res.hidden = false; res.className = 'result-pill lose'; res.textContent = `−${fmt(bet)} ₽`;
       try { tg?.HapticFeedback?.notificationOccurred('error'); } catch {}
       setTimeout(reset, 1600);
       return;
@@ -66,7 +68,9 @@ export function renderHilo(app){
     showCard(d.next);
     mult = d.mult;
     mu.textContent = 'x' + mult;
-    go.textContent = `Забрать • ${fmt(Math.floor(bet * mult))} 💎`;
+    const profit = Math.floor(bet * mult) - bet;
+    go.textContent = `Забрать • +${fmt(profit)} ₽`;
+    hi.disabled = false; lo.disabled = false;
   };
   hi.onclick = guess(true);
   lo.onclick = guess(false);
@@ -77,9 +81,9 @@ export function renderHilo(app){
       busy = true; haptic(tg, 'medium');
       const d = await play(tg, 'hilo_start', { bet });
       busy = false;
-      if (!d.ok) return toast(d.error === 'low_balance' ? 'Не хватает осколков' : 'Ошибка');
+      if (!d.ok){ toast(d.error === 'low_balance' ? 'Не хватает рублей' : 'Ошибка'); return; }
       sid = d.sid; active = true;
-      state.balance = state.balance - bet; syncTop();
+      state.balance -= bet; syncTop();
       showCard(d.cur);
       res.hidden = true;
       stage.classList.remove('win','lose');
@@ -88,12 +92,14 @@ export function renderHilo(app){
       return;
     }
     busy = true; haptic(tg, 'medium');
+    hi.disabled = true; lo.disabled = true;
     const d = await play(tg, 'hilo_cash', { sid });
     busy = false;
-    if (!d.ok) return toast('Сначала угадай');
+    if (!d.ok){ toast('Сначала угадай'); hi.disabled = false; lo.disabled = false; return; }
     state.balance = d.balance; syncTop();
     stage.classList.add('win');
-    res.hidden = false; res.className = 'result-pill win'; res.textContent = `+${fmt(d.payout)} 💎`;
+    const profit = d.payout - bet;
+    res.hidden = false; res.className = 'result-pill win'; res.textContent = `+${fmt(profit)} ₽`;
     try { tg?.HapticFeedback?.notificationOccurred('success'); } catch {}
     setTimeout(reset, 1500);
   };
