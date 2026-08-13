@@ -23,8 +23,9 @@ export function renderCrash(app){
 
   function stop(){ active = false; cancelAnimationFrame(raf); clearInterval(poll); }
 
-  function end(win, text){
+  function end(win, text, finalBal){
     stop();
+    if (finalBal != null){ state.balance = finalBal; syncTop(); }
     num.classList.add(win ? 'win' : 'lose');
     stage.classList.add(win ? 'win' : 'lose');
     res.hidden = false;
@@ -42,9 +43,9 @@ export function renderCrash(app){
       busy = true; haptic(tg, 'medium');
       const d = await play(tg, 'crash_start', { bet });
       busy = false;
-      if (!d.ok) return toast(d.error === 'low_balance' ? 'Не хватает осколков' : 'Ошибка');
+      if (!d.ok){ toast(d.error === 'low_balance' ? 'Не хватает рублей' : 'Ошибка'); return; }
       sid = d.sid; t0 = Date.now(); active = true;
-      state.balance = state.balance - bet; syncTop();
+      state.balance -= bet; syncTop();
       num.className = 'crash-num';
       stage.classList.remove('win','lose');
       res.hidden = true;
@@ -57,7 +58,7 @@ export function renderCrash(app){
         const c = await play(tg, 'crash_check', { sid });
         if (c.ok && c.crashed){
           num.textContent = c.x.toFixed(2) + 'x';
-          end(false, `💥 краш на x${c.x} • −${fmt(bet)} 💎`);
+          end(false, `💥 краш на x${c.x} • −${fmt(bet)} ₽`);
         }
       }, 500);
       return;
@@ -65,14 +66,14 @@ export function renderCrash(app){
     busy = true; haptic(tg, 'medium');
     const d = await play(tg, 'crash_cash', { sid });
     busy = false;
-    if (!d.ok) return toast('Ошибка');
+    if (!d.ok){ toast('Ошибка'); return; }
     if (d.crashed){
       num.textContent = d.x.toFixed(2) + 'x';
-      end(false, `💥 краш на x${d.x} • −${fmt(bet)} 💎`);
+      end(false, `💥 краш на x${d.x} • −${fmt(bet)} ₽`);
     } else {
-      state.balance = d.balance; syncTop();
       num.textContent = d.cash.toFixed(2) + 'x';
-      end(true, `+${fmt(d.payout)} 💎`);
+      const profit = d.payout - bet;
+      end(true, `+${fmt(profit)} ₽`, d.balance);
     }
   };
 
