@@ -21,6 +21,17 @@ function wheelPick(): number {
   return WHEEL.length - 1;
 }
 
+const SLOT_SYM = [
+  { s: '💎', w: 6, m: 25 }, { s: '7️', w: 9, m: 15 }, { s: '🔔', w: 12, m: 10 },
+  { s: '⭐', w: 18, m: 7 }, { s: '🍒', w: 25, m: 5 }, { s: '🍋', w: 30, m: 3 },
+];
+function slotPick(): number {
+  const total = SLOT_SYM.reduce((s, x) => s + x.w, 0);
+  let r = randInt(total - 1);
+  for (let i = 0; i < SLOT_SYM.length; i++){ r -= SLOT_SYM[i].w; if (r < 0) return i; }
+  return SLOT_SYM.length - 1;
+}
+
 const minesMult = (mc: number, picks: number) => {
   let m = 1;
   for (let i = 0; i < picks; i++) m *= (25 - i) / (25 - mc - i);
@@ -55,7 +66,7 @@ async function ledger(env: any, uid: number, amount: number, reason: string, gam
   await env.DB.prepare('INSERT INTO ledger (user_id,amount,reason,game,created_at) VALUES (?,?,?,?,?)').bind(uid, amount, reason, game, Date.now()).run();
 }
 
-const GAME_MAX: Record<string, number> = { coinflip: 9000, wheel: 10000, mines: 10000, crash: 50000, ladder: 9000, dice: 5000 };
+const GAME_MAX: Record<string, number> = { coinflip: 9000, wheel: 10000, mines: 10000, crash: 50000, ladder: 9000, dice: 5000, slots: 25000, roulette: 10000 };
 const LADDER_ROWS = 8;
 
 export default {
@@ -88,35 +99,36 @@ export default {
     if (!max) return json({ error: 'unknown_game' }, 400);
     const user: any = await getOrCreateUser(env.DB, tgUser);
     const bet = Math.floor(Number(body.bet));
-    const needBet = !['mines_pick','mines_cash','crash_cash','crash_check','ladder_pick','ladder_cash'].includes(game);
-    if (needBet && (!Number.isFinite(bet) || bet < 1 || bet > max)) return json({ error: 'bad_bet' }, 400);
+    const noBet = ['mines_pick','mines_cash','crash_cash','crash_check','ladder_pick','ladder_cash'].includes(game);
+    if (!noBet && (!Number.isFinite(bet) || bet < 1 || bet > max)) return json({ error: 'bad_bet' }, 400);
+    const pay = async (p: number, g: string) => {
+      await ledger(env, uid, -bet, 'bet', g);
+      if (p) await ledger(env, uid, p, 'win', g);
+      return await credit(env, uid, p);
+    };
 
     /* ---------- COINFLIP ---------- */
     if (game === 'coinflip') {
-      if (user.balance < bet || !(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
+      if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
       const choice = body.choice === 'tails' ? 'tails' : 'heads';
       const side = (randInt(999) <= 494) ? choice : (choice === 'heads' ? 'tails' : 'heads');
       const payout = side === choice ? bet * 2 : 0;
-      const balance = await credit(env, uid, payout);
-      await ledger(env, uid, -bet, 'bet', game);
-      if (payout) await ledger(env, uid, payout, 'win', game);
+      const balance = await pay(payout, game);
       return json({ ok: true, side, mult: payout ? 2 : 0, payout, balance });
     }
 
     /* ---------- WHEEL ---------- */
     if (game === 'wheel') {
-      if (user.balance < bet || !(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
+      if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
       const i = wheelPick();
       const payout = Math.floor(bet * WHEEL[i].m);
-      const balance = await credit(env, uid, payout);
-      await ledger(env, uid, -bet, 'bet', game);
-      if (payout) await ledger(env, uid, payout, 'win', game);
+      const balance = await pay(payout, game);
       return json({ ok: true, index: i, mult: WHEEL[i].m, payout, balance });
     }
 
     /* ---------- DICE ---------- */
     if (game === 'dice') {
-      if (user.balance < bet || !(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
+      if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
       const target = Math.max(2, Math.min(98, Math.floor(Number(body.target) || 50)));
       const over = !!body.over;
       const chance = over ? 99 - target : target;
@@ -124,15 +136,38 @@ export default {
       const roll = randInt(99);
       const win = over ? roll > target : roll < target;
       const payout = win ? Math.floor(bet * mult) : 0;
-      const balance = await credit(env, uid, payout);
-      await ledger(env, uid, -bet, 'bet', game);
-      if (payout) await ledger(env, uid, payout, 'win', game);
+      const balance = await pay(payout, game);
       return json({ ok: true, roll, win, mult, payout, balance });
+    }
+
+    /* ---------- SLOTS ---------- */
+    if (game === 'slots') {
+      if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
+      const reels = [slotPick(), slotPick(), slotPick()];
+      const [a, b, c] = reels;
+      let mult = 0;
+      if (a === b && b === c) mult = SLOT_SYM[a].m;
+      else if (a === b || b === c || a === c) mult = 1.5;
+      const payout = Math.floor(bet * mult);
+      const balance = await pay(payout, game);
+      return json({ ok: true, reels, mult, payout, balance });
+    }
+
+    /* ---------- ROULETTE ---------- */
+    if (game === 'roulette') {
+      if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
+      const n = randInt(14);
+      const color = n === 0 ? 'green' : (n % 2 === 1 ? 'red' : 'black');
+      const choice = ['red','black','green'].includes(body.choice) ? body.choice : 'red';
+      const mult = choice === color ? (color === 'green' ? 14 : 2.1) : 0;
+      const payout = Math.floor(bet * mult);
+      const balance = await pay(payout, game);
+      return json({ ok: true, n, color, mult, payout, balance });
     }
 
     /* ---------- MINES ---------- */
     if (game === 'mines_start') {
-      if (user.balance < bet || !(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
+      if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
       const mc = [3,5,8].includes(Number(body.mines)) ? Number(body.mines) : 5;
       const arr = [...Array(25).keys()];
       for (let i = arr.length - 1; i > 0; i--){ const j = randInt(i); [arr[i], arr[j]] = [arr[j], arr[i]]; }
@@ -166,7 +201,7 @@ export default {
 
     /* ---------- LADDER ---------- */
     if (game === 'ladder_start') {
-      if (user.balance < bet || !(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
+      if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
       const mines = Array.from({ length: LADDER_ROWS }, () => randInt(2));
       const sid = crypto.randomUUID();
       await saveSession(env, sid, uid, 'ladder', { bet, mines, step: 0, done: false });
@@ -207,7 +242,7 @@ export default {
 
     /* ---------- CRASH ---------- */
     if (game === 'crash_start') {
-      if (user.balance < bet || !(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
+      if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
       const sid = crypto.randomUUID();
       await saveSession(env, sid, uid, 'crash', { bet, x: genCrash(), t0: Date.now(), done: false });
       await ledger(env, uid, -bet, 'bet', 'crash');
