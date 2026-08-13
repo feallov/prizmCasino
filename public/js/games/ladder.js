@@ -2,7 +2,7 @@ import { el, haptic, fmt, makeBetRow } from '../ui.js';
 import { play } from '../api.js';
 
 const ROWS = 8;
-const multOf = k => Math.floor(0.97 * Math.pow(1.5, k) * 100) / 100;
+const multOf = k => Math.floor(0.95 * Math.pow(1.5, k) * 100) / 100;
 
 export function renderLadder(app){
   const { tg, state, syncTop, toast, show } = app;
@@ -36,9 +36,10 @@ export function renderLadder(app){
 
   function reset(){
     active = false; sid = null; step = 0;
-    rowEls.forEach(rw => rw.querySelectorAll('.mcell').forEach(c => { c.className = 'mcell'; c.textContent = ''; }));
+    rowEls.forEach(rw => rw.querySelectorAll('.mcell').forEach(c => { c.className = 'mcell'; c.textContent = ''; c.disabled = false; }));
     bets.el.style.display = '';
     go.textContent = 'Начать';
+    res.hidden = true;
     markCur();
   }
   reset();
@@ -46,16 +47,17 @@ export function renderLadder(app){
   async function pick(r, c, b){
     if (!active || busy || r !== step) return;
     busy = true; haptic(tg);
+    rowEls.forEach(rw => rw.querySelectorAll('.mcell').forEach(x => x.disabled = true));
     const d = await play(tg, 'ladder_pick', { sid, cell: c });
     busy = false;
-    if (!d.ok) return toast('Ошибка');
+    if (!d.ok){ toast('Ошибка'); rowEls.forEach(rw => rw.querySelectorAll('.mcell').forEach(x => x.disabled = false)); return; }
     if (d.boom){
       b.classList.add('boom'); b.textContent = '❌';
       const mineCell = rowEls[r].querySelectorAll('.mcell')[d.mine];
       if (d.mine !== c){ mineCell.classList.add('mine'); mineCell.textContent = '💣'; }
       const st = wrap.querySelector('.stage');
       st.classList.add('lose');
-      res.hidden = false; res.className = 'result-pill lose'; res.textContent = `−${fmt(bet)} 💎`;
+      res.hidden = false; res.className = 'result-pill lose'; res.textContent = `−${fmt(bet)} ₽`;
       try { tg?.HapticFeedback?.notificationOccurred('error'); } catch {}
       setTimeout(reset, 1600);
       return;
@@ -65,12 +67,14 @@ export function renderLadder(app){
     if (d.top){
       state.balance = d.balance; syncTop();
       wrap.querySelector('.stage').classList.add('win');
-      res.hidden = false; res.className = 'result-pill win'; res.textContent = `ВЕРХ! +${fmt(d.payout)} 💎`;
+      const profit = d.payout - bet;
+      res.hidden = false; res.className = 'result-pill win'; res.textContent = `ВЕРХ! +${fmt(profit)} ₽`;
       try { tg?.HapticFeedback?.notificationOccurred('success'); } catch {}
       setTimeout(reset, 1800);
       return;
     }
-    go.textContent = `Забрать • x${d.mult}`;
+    rowEls.forEach(rw => rw.querySelectorAll('.mcell').forEach(x => x.disabled = false));
+    go.textContent = `Забрать • x${d.mult} (${fmt(Math.floor(bet*d.mult) - bet)} ₽)`;
     markCur();
   }
 
@@ -80,10 +84,10 @@ export function renderLadder(app){
       busy = true; haptic(tg, 'medium');
       const d = await play(tg, 'ladder_start', { bet });
       busy = false;
-      if (!d.ok) return toast(d.error === 'low_balance' ? 'Не хватает осколков' : 'Ошибка');
+      if (!d.ok){ toast(d.error === 'low_balance' ? 'Не хватает рублей' : 'Ошибка'); return; }
       sid = d.sid; active = true; step = 0;
-      state.balance = state.balance - bet; syncTop();
-      rowEls.forEach(rw => rw.querySelectorAll('.mcell').forEach(c => { c.className = 'mcell'; c.textContent = ''; }));
+      state.balance -= bet; syncTop();
+      rowEls.forEach(rw => rw.querySelectorAll('.mcell').forEach(c => { c.className = 'mcell'; c.textContent = ''; c.disabled = false; }));
       res.hidden = true;
       wrap.querySelector('.stage').classList.remove('win','lose');
       bets.el.style.display = 'none';
@@ -92,12 +96,14 @@ export function renderLadder(app){
       return;
     }
     busy = true; haptic(tg, 'medium');
+    rowEls.forEach(rw => rw.querySelectorAll('.mcell').forEach(x => x.disabled = true));
     const d = await play(tg, 'ladder_cash', { sid });
     busy = false;
-    if (!d.ok) return toast('Ошибка');
+    if (!d.ok){ toast('Ошибка'); rowEls.forEach(rw => rw.querySelectorAll('.mcell').forEach(x => x.disabled = false)); return; }
     state.balance = d.balance; syncTop();
     wrap.querySelector('.stage').classList.add('win');
-    res.hidden = false; res.className = 'result-pill win'; res.textContent = `+${fmt(d.payout)} 💎`;
+    const profit = d.payout - bet;
+    res.hidden = false; res.className = 'result-pill win'; res.textContent = `+${fmt(profit)} ₽`;
     try { tg?.HapticFeedback?.notificationOccurred('success'); } catch {}
     setTimeout(reset, 1400);
   };
