@@ -10,10 +10,9 @@ function randInt(maxInclusive: number): number {
   return a[0] % (maxInclusive + 1);
 }
 
-/* колесо: множитель + вес (EV ~0.88, дом в плюсе) */
 const WHEEL = [
-  { m: 0,   w: 8 }, { m: 1.2, w: 6 }, { m: 0.3, w: 5 }, { m: 2, w: 3 }, { m: 0.5, w: 6 },
-  { m: 3,   w: 2 }, { m: 0.8, w: 5 }, { m: 1.5, w: 5 }, { m: 5, w: 1 }, { m: 0.2, w: 6 },
+  { m: 0, w: 8 }, { m: 1.2, w: 6 }, { m: 0.3, w: 5 }, { m: 2, w: 3 }, { m: 0.5, w: 6 },
+  { m: 3, w: 2 }, { m: 0.8, w: 5 }, { m: 1.5, w: 5 }, { m: 5, w: 1 }, { m: 0.2, w: 6 },
 ];
 function wheelPick(): number {
   const total = WHEEL.reduce((s, x) => s + x.w, 0);
@@ -22,7 +21,37 @@ function wheelPick(): number {
   return WHEEL.length - 1;
 }
 
-const GAME_MAX: Record<string, number> = { coinflip: 9000, wheel: 10000 };
+function minesMult(mc: number, picks: number): number {
+  let m = 1;
+  for (let i = 0; i < picks; i++) m *= (25 - i) / (25 - mc - i);
+  return Math.floor(m * 97) / 100;
+}
+const crashMult = (ms: number) => Math.min(100, Math.exp(ms / 1000 * 0.35));
+function genCrash(): number {
+  const r = randInt(999) / 1000;
+  return Math.max(1, Math.min(100, Math.floor((0.97 / (1 - r)) * 100) / 100));
+}
+
+async function deduct(env: any, uid: number, amount: number): Promise<boolean> {
+  const d = await env.DB.prepare('UPDATE users SET balance = balance - ? WHERE telegram_id = ? AND balance >= ?').bind(amount, uid, amount).run();
+  return (d.meta?.changes ?? 0) > 0;
+}
+async function credit(env: any, uid: number, amount: number): Promise<number> {
+  if (amount > 0) await env.DB.prepare('UPDATE users SET balance = balance + ? WHERE telegram_id = ?').bind(amount, uid).run();
+  const r: any = await env.DB.prepare('SELECT balance FROM users WHERE telegram_id = ?').bind(uid).first();
+  return r?.balance ?? 0;
+}
+async function loadSession(env: any, sid: string, uid: number) {
+  const row: any = await env.DB.prepare('SELECT * FROM sessions WHERE id = ? AND user_id = ?').bind(sid, uid).first();
+  if (!row) return null;
+  return { data: JSON.parse(row.data) as any };
+}
+async function saveSession(env: any, sid: string, uid: number, game: string, data: any) {
+  await env.DB.prepare('INSERT INTO sessions (id,user_id,game,data,created_at) VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data = excluded.data')
+    .bind(sid, uid, game, JSON.stringify(data), Date.now()).run();
+}
+
+const GAME_MAX: Record<string, number> = { coinflip: 9000, wheel: 10000, mines: 10000, crash: 50000 };
 
 export default {
   async fetch(request: Request, env: any): Promise<Response> {
@@ -36,8 +65,8 @@ export default {
     if (!tgUser) return json({ error: 'unauthorized' }, 401);
 
     await ensureSchema(env.DB);
+    const uid = tgUser.id;
 
-    /* ---------- /api/me ---------- */
     if (url.pathname === '/api/me') {
       const row: any = await getOrCreateUser(env.DB, tgUser);
       const on: any = await env.DB.prepare('SELECT COUNT(*) AS c FROM users WHERE last_seen > ?').bind(Date.now() - 5*60*1000).first();
@@ -47,45 +76,111 @@ export default {
       });
     }
 
-    /* ---------- /api/play ---------- */
-    if (url.pathname === '/api/play') {
-      const game = String(body.game ?? '');
-      const max = GAME_MAX[game];
-      if (!max) return json({ error: 'unknown_game' }, 400);
-      const bet = Math.floor(Number(body.bet));
-      if (!Number.isFinite(bet) || bet < 1 || bet > max) return json({ error: 'bad_bet' }, 400);
+    if (url.pathname !== '/api/play') return json({ error: 'not_found' }, 404);
 
-      const user: any = await getOrCreateUser(env.DB, tgUser);
-      if (user.balance < bet) return json({ error: 'low_balance' }, 400);
-      const ded = await env.DB.prepare('UPDATE users SET balance = balance - ? WHERE telegram_id = ? AND balance >= ?').bind(bet, user.telegram_id, bet).run();
-      if (!(ded.meta?.changes ?? 0)) return json({ error: 'low_balance' }, 400);
+    const game = String(body.game ?? '');
+    const max = GAME_MAX[game];
+    if (!max) return json({ error: 'unknown_game' }, 400);
+    const user: any = await getOrCreateUser(env.DB, tgUser);
+    const bet = Math.floor(Number(body.bet));
+    const needBet = !['mines_pick','mines_cash','crash_cash','crash_check'].includes(game);
+    if (needBet && (!Number.isFinite(bet) || bet < 1 || bet > max)) return json({ error: 'bad_bet' }, 400);
 
-      let mult = 0; const extra: any = {};
-      if (game === 'coinflip') {
-        const choice = body.choice === 'tails' ? 'tails' : 'heads';
-        const winRoll = randInt(999) <= 494;               // 49.5% — дом в плюсе
-        const side = winRoll ? choice : (choice === 'heads' ? 'tails' : 'heads');
-        extra.side = side;
-        mult = side === choice ? 2 : 0;
-      } else if (game === 'wheel') {
-        const i = wheelPick();
-        extra.index = i;
-        mult = WHEEL[i].m;
-      }
-
-      const payout = Math.floor(bet * mult);
-      if (payout > 0)
-        await env.DB.prepare('UPDATE users SET balance = balance + ? WHERE telegram_id = ?').bind(payout, user.telegram_id).run();
-
+    /* ---------- COINFLIP ---------- */
+    if (game === 'coinflip') {
+      if (user.balance < bet || !(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
+      const choice = body.choice === 'tails' ? 'tails' : 'heads';
+      const winRoll = randInt(999) <= 494;
+      const side = winRoll ? choice : (choice === 'heads' ? 'tails' : 'heads');
+      const payout = side === choice ? bet * 2 : 0;
+      const balance = await credit(env, uid, payout);
       const now = Date.now();
-      await env.DB.prepare('INSERT INTO ledger (user_id, amount, reason, game, created_at) VALUES (?,?,?,?,?)').bind(user.telegram_id, -bet, 'bet', game, now).run();
-      if (payout > 0)
-        await env.DB.prepare('INSERT INTO ledger (user_id, amount, reason, game, created_at) VALUES (?,?,?,?,?)').bind(user.telegram_id, payout, 'win', game, now).run();
-
-      const bal: any = await env.DB.prepare('SELECT balance FROM users WHERE telegram_id = ?').bind(user.telegram_id).first();
-      return json({ ok: true, mult, payout, balance: bal?.balance ?? 0, ...extra });
+      await env.DB.prepare('INSERT INTO ledger (user_id,amount,reason,game,created_at) VALUES (?,?,?,?,?)').bind(uid, -bet, 'bet', game, now).run();
+      if (payout) await env.DB.prepare('INSERT INTO ledger (user_id,amount,reason,game,created_at) VALUES (?,?,?,?,?)').bind(uid, payout, 'win', game, now).run();
+      return json({ ok: true, side, mult: payout ? 2 : 0, payout, balance });
     }
 
-    return json({ error: 'not_found' }, 404);
+    /* ---------- WHEEL ---------- */
+    if (game === 'wheel') {
+      if (user.balance < bet || !(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
+      const i = wheelPick();
+      const payout = Math.floor(bet * WHEEL[i].m);
+      const balance = await credit(env, uid, payout);
+      const now = Date.now();
+      await env.DB.prepare('INSERT INTO ledger (user_id,amount,reason,game,created_at) VALUES (?,?,?,?,?)').bind(uid, -bet, 'bet', game, now).run();
+      if (payout) await env.DB.prepare('INSERT INTO ledger (user_id,amount,reason,game,created_at) VALUES (?,?,?,?,?)').bind(uid, payout, 'win', game, now).run();
+      return json({ ok: true, index: i, mult: WHEEL[i].m, payout, balance });
+    }
+
+    /* ---------- MINES ---------- */
+    if (game === 'mines_start') {
+      if (user.balance < bet || !(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
+      const mc = [3,5,8].includes(Number(body.mines)) ? Number(body.mines) : 5;
+      const arr = [...Array(25).keys()];
+      for (let i = arr.length - 1; i > 0; i--){ const j = randInt(i); [arr[i], arr[j]] = [arr[j], arr[i]]; }
+      const sid = crypto.randomUUID();
+      await saveSession(env, sid, uid, 'mines', { bet, mc, mines: arr.slice(0, mc), picked: [], done: false });
+      await env.DB.prepare('INSERT INTO ledger (user_id,amount,reason,game,created_at) VALUES (?,?,?,?,?)').bind(uid, -bet, 'bet', 'mines', Date.now()).run();
+      return json({ ok: true, sid });
+    }
+    if (game === 'mines_pick') {
+      const s = await loadSession(env, String(body.sid ?? ''), uid);
+      if (!s || s.data.done) return json({ error: 'done' }, 400);
+      const cell = Math.floor(Number(body.cell));
+      if (cell < 0 || cell > 24 || s.data.picked.includes(cell)) return json({ error: 'bad_cell' }, 400);
+      if (s.data.mines.includes(cell)) {
+        s.data.done = true;
+        await saveSession(env, body.sid, uid, 'mines', s.data);
+        return json({ ok: true, boom: true, mines: s.data.mines });
+      }
+      s.data.picked.push(cell);
+      await saveSession(env, body.sid, uid, 'mines', s.data);
+      return json({ ok: true, boom: false, mult: minesMult(s.data.mc, s.data.picked.length) });
+    }
+    if (game === 'mines_cash') {
+      const s = await loadSession(env, String(body.sid ?? ''), uid);
+      if (!s || s.data.done || !s.data.picked.length) return json({ error: 'done' }, 400);
+      const payout = Math.floor(s.data.bet * minesMult(s.data.mc, s.data.picked.length));
+      s.data.done = true;
+      await saveSession(env, body.sid, uid, 'mines', s.data);
+      const balance = await credit(env, uid, payout);
+      await env.DB.prepare('INSERT INTO ledger (user_id,amount,reason,game,created_at) VALUES (?,?,?,?,?)').bind(uid, payout, 'win', 'mines', Date.now()).run();
+      return json({ ok: true, payout, balance });
+    }
+
+    /* ---------- CRASH ---------- */
+    if (game === 'crash_start') {
+      if (user.balance < bet || !(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
+      const sid = crypto.randomUUID();
+      await saveSession(env, sid, uid, 'crash', { bet, x: genCrash(), t0: Date.now(), done: false });
+      await env.DB.prepare('INSERT INTO ledger (user_id,amount,reason,game,created_at) VALUES (?,?,?,?,?)').bind(uid, -bet, 'bet', 'crash', Date.now()).run();
+      return json({ ok: true, sid, t0: Date.now() });
+    }
+    if (game === 'crash_cash') {
+      const s = await loadSession(env, String(body.sid ?? ''), uid);
+      if (!s || s.data.done) return json({ error: 'done' }, 400);
+      const m = crashMult(Date.now() - s.data.t0);
+      if (m >= s.data.x) {
+        s.data.done = true; await saveSession(env, body.sid, uid, 'crash', s.data);
+        return json({ ok: true, crashed: true, x: s.data.x });
+      }
+      const payout = Math.floor(s.data.bet * m);
+      s.data.done = true; await saveSession(env, body.sid, uid, 'crash', s.data);
+      const balance = await credit(env, uid, payout);
+      await env.DB.prepare('INSERT INTO ledger (user_id,amount,reason,game,created_at) VALUES (?,?,?,?,?)').bind(uid, payout, 'win', 'crash', Date.now()).run();
+      return json({ ok: true, crashed: false, cash: Math.floor(m*100)/100, payout, balance });
+    }
+    if (game === 'crash_check') {
+      const s = await loadSession(env, String(body.sid ?? ''), uid);
+      if (!s) return json({ error: 'done' }, 400);
+      const m = crashMult(Date.now() - s.data.t0);
+      if (m >= s.data.x && !s.data.done) {
+        s.data.done = true; await saveSession(env, body.sid, uid, 'crash', s.data);
+        return json({ ok: true, crashed: true, x: s.data.x });
+      }
+      return json({ ok: true, crashed: s.data.done === true && m >= s.data.x, m: Math.floor(m*100)/100 });
+    }
+
+    return json({ error: 'unknown_game' }, 400);
   },
 };
