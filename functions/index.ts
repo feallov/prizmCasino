@@ -10,7 +10,9 @@ function randInt(maxInclusive: number): number {
   return a[0] % (maxInclusive + 1);
 }
 
-/* ---------- конфиги игр ---------- */
+const CHANNEL = '@prizmCasino';
+
+/* RTP как в реальном казино: 92–97% */
 const WHEEL = [
   { m: 0, w: 8 }, { m: 1.2, w: 6 }, { m: 0.3, w: 5 }, { m: 2, w: 3 }, { m: 0.5, w: 6 },
   { m: 3, w: 2 }, { m: 0.8, w: 5 }, { m: 1.5, w: 5 }, { m: 5, w: 1 }, { m: 0.2, w: 6 },
@@ -34,16 +36,15 @@ function wpick(list: { w: number }[]): number {
 const minesMult = (mc: number, picks: number) => {
   let m = 1;
   for (let i = 0; i < picks; i++) m *= (25 - i) / (25 - mc - i);
-  return Math.floor(m * 97) / 100;
+  return Math.floor(m * 95) / 100;
 };
-const ladderMult = (k: number) => Math.floor(0.97 * Math.pow(1.5, k) * 100) / 100;
+const ladderMult = (k: number) => Math.floor(0.95 * Math.pow(1.5, k) * 100) / 100;
 const crashMult = (ms: number) => Math.min(100, Math.exp(ms / 1000 * 0.35));
 const genCrash = () => {
   const r = randInt(999) / 1000;
-  return Math.max(1, Math.min(100, Math.floor((0.97 / (1 - r)) * 100) / 100));
+  return Math.max(1, Math.min(100, Math.floor((0.95 / (1 - r)) * 100) / 100));
 };
 
-/* ---------- карты ---------- */
 const drawCard = () => ({ r: 1 + randInt(12), s: randInt(3) });
 function handValue(ranks: number[]): number {
   let v = 0, aces = 0;
@@ -52,7 +53,6 @@ function handValue(ranks: number[]): number {
   return v;
 }
 
-/* ---------- хелперы БД ---------- */
 async function deduct(env: any, uid: number, amount: number): Promise<boolean> {
   const d = await env.DB.prepare('UPDATE users SET balance = balance - ? WHERE telegram_id = ? AND balance >= ?').bind(amount, uid, amount).run();
   return (d.meta?.changes ?? 0) > 0;
@@ -74,12 +74,15 @@ async function saveSession(env: any, sid: string, uid: number, game: string, dat
 async function ledger(env: any, uid: number, amount: number, reason: string, game: string) {
   await env.DB.prepare('INSERT INTO ledger (user_id,amount,reason,game,created_at) VALUES (?,?,?,?,?)').bind(uid, amount, reason, game, Date.now()).run();
 }
+const isAdmin = (env: any, uid: number) => String(env.ADMIN_ID ?? '') !== '' && String(uid) === String(env.ADMIN_ID);
 
-const GAME_MAX: Record<string, number> = {
-  coinflip: 9000, wheel: 10000, mines: 10000, crash: 50000, ladder: 9000, dice: 5000,
-  slots: 25000, roulette: 10000, blackjack: 15000, cases: 20000, rps: 3000, plinko: 12000, hilo: 8000,
-};
-const LADDER_ROWS = 8;
+const TASKS: { id: string; title: string; reward: number }[] = [
+  { id: 'sub',     title: 'Подписаться на канал',      reward: 50 },
+  { id: 'first',   title: 'Сыграть первую игру',       reward: 25 },
+  { id: 'bets10',  title: 'Сделать 10 ставок',         reward: 50 },
+  { id: 'bigwin',  title: 'Выиграть 500 ₽ за раз',     reward: 100 },
+  { id: 'profit1k',title: 'Заработать 1 000 ₽ профита',reward: 500 },
+];
 
 export default {
   async fetch(request: Request, env: any): Promise<Response> {
@@ -94,42 +97,169 @@ export default {
 
     await ensureSchema(env.DB);
     const uid = tgUser.id;
+    const user: any = await getOrCreateUser(env.DB, tgUser);
 
+    /* ---------- /api/me ---------- */
     if (url.pathname === '/api/me') {
-      const row: any = await getOrCreateUser(env.DB, tgUser);
       const on: any = await env.DB.prepare('SELECT COUNT(*) AS c FROM users WHERE last_seen > ?').bind(Date.now() - 5*60*1000).first();
+      const per: any = await env.DB.prepare('SELECT last_game AS g, COUNT(*) AS c FROM users WHERE last_seen > ? AND last_game IS NOT NULL GROUP BY last_game').bind(Date.now() - 5*60*1000).all();
+      const st: any = await env.DB.prepare(`SELECT
+        COUNT(CASE WHEN amount < 0 THEN 1 END) AS games,
+        COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END),0) AS wagered,
+        COALESCE(SUM(CASE WHEN amount > 0 AND reason = 'win' THEN amount ELSE 0 END),0) AS won,
+        COALESCE(MAX(CASE WHEN reason = 'win' THEN amount ELSE 0 END),0) AS biggest
+        FROM ledger WHERE user_id = ?`).bind(uid).first();
       return json({
-        user: { id: row.telegram_id, username: row.username, first_name: row.first_name, photo_url: row.photo_url, balance: row.balance },
+        user: { id: user.telegram_id, username: user.username, first_name: user.first_name, photo_url: user.photo_url, balance: user.balance, isAdmin: isAdmin(env, uid) },
         online: on?.c ?? 1,
+        perGame: Object.fromEntries((per?.results ?? []).map((r: any) => [r.g, r.c])),
+        stats: { games: st?.games ?? 0, wagered: st?.wagered ?? 0, won: st?.won ?? 0, biggest: st?.biggest ?? 0, profit: (st?.won ?? 0) - (st?.wagered ?? 0) },
       });
     }
 
+    /* ---------- /api/top ---------- */
+    if (url.pathname === '/api/top') {
+      const rows: any = await env.DB.prepare(`SELECT u.username, u.first_name, u.photo_url,
+        (SELECT COALESCE(SUM(l.amount),0) FROM ledger l WHERE l.user_id = u.telegram_id) AS profit
+        FROM users u ORDER BY profit DESC LIMIT 20`).all();
+      return json({ ok: true, top: rows.results.filter((r: any) => r.profit > 0) });
+    }
+
+    /* ---------- /api/daily ---------- */
+    if (url.pathname === '/api/daily') {
+      const now = Date.now();
+      const last = user.last_daily ?? 0;
+      if (now - last < 24*3600*1000) return json({ error: 'cooldown', left: 24*3600*1000 - (now - last) });
+      const streak = (now - last < 48*3600*1000) ? (user.streak ?? 0) + 1 : 1;
+      const amount = Math.min(25 + (streak - 1) * 5, 50);
+      await env.DB.prepare('UPDATE users SET last_daily = ?, streak = ? WHERE telegram_id = ?').bind(now, streak, uid).run();
+      const balance = await credit(env, uid, amount);
+      await ledger(env, uid, amount, 'daily', null);
+      return json({ ok: true, amount, streak, balance });
+    }
+
+    /* ---------- /api/tasks ---------- */
+    if (url.pathname === '/api/tasks') {
+      const done: any = await env.DB.prepare('SELECT task_id FROM tasks_done WHERE user_id = ?').bind(uid).all();
+      const doneIds = new Set((done.results ?? []).map((r: any) => r.task_id));
+      const bets: any = await env.DB.prepare('SELECT COUNT(*) c FROM ledger WHERE user_id = ? AND amount < 0').bind(uid).first();
+      const big: any = await env.DB.prepare('SELECT MAX(amount) m FROM ledger WHERE user_id = ? AND reason = \'win\'').bind(uid).first();
+      const st: any = await env.DB.prepare('SELECT COALESCE(SUM(amount),0) p FROM ledger WHERE user_id = ?').bind(uid).first();
+      let sub = false;
+      try {
+        const r = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/getChatMember?chat_id=${encodeURIComponent(CHANNEL)}&user_id=${uid}`);
+        const d: any = await r.json();
+        sub = ['creator','administrator','member','restricted'].includes(d?.result?.status);
+      } catch {}
+      const ready: Record<string, boolean> = {
+        sub, first: (bets?.c ?? 0) >= 1, bets10: (bets?.c ?? 0) >= 10,
+        bigwin: (big?.m ?? 0) >= 500, profit1k: (st?.p ?? 0) >= 1000,
+      };
+      return json({ ok: true, tasks: TASKS.map(t => ({ ...t, done: doneIds.has(t.id), ready: !!ready[t.id] })) });
+    }
+    if (url.pathname === '/api/task_claim') {
+      const t = TASKS.find(x => x.id === body.task);
+      if (!t) return json({ error: 'unknown' }, 400);
+      const chk: any = await env.DB.prepare('SELECT 1 x FROM tasks_done WHERE user_id = ? AND task_id = ?').bind(uid, t.id).first();
+      if (chk) return json({ error: 'done' }, 400);
+      const list: any = await fetch(`https://request.local/api/tasks`, { method: 'POST', body: JSON.stringify(body) }).catch(() => null) ?? null;
+      // проверка условий напрямую:
+      let ok = false;
+      if (t.id === 'sub') {
+        try {
+          const r = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/getChatMember?chat_id=${encodeURIComponent(CHANNEL)}&user_id=${uid}`);
+          const d: any = await r.json();
+          ok = ['creator','administrator','member','restricted'].includes(d?.result?.status);
+        } catch {}
+      } else if (t.id === 'first') {
+        const r: any = await env.DB.prepare('SELECT COUNT(*) c FROM ledger WHERE user_id = ? AND amount < 0').bind(uid).first();
+        ok = (r?.c ?? 0) >= 1;
+      } else if (t.id === 'bets10') {
+        const r: any = await env.DB.prepare('SELECT COUNT(*) c FROM ledger WHERE user_id = ? AND amount < 0').bind(uid).first();
+        ok = (r?.c ?? 0) >= 10;
+      } else if (t.id === 'bigwin') {
+        const r: any = await env.DB.prepare('SELECT MAX(amount) m FROM ledger WHERE user_id = ? AND reason = \'win\'').bind(uid).first();
+        ok = (r?.m ?? 0) >= 500;
+      } else if (t.id === 'profit1k') {
+        const r: any = await env.DB.prepare('SELECT COALESCE(SUM(amount),0) p FROM ledger WHERE user_id = ?').bind(uid).first();
+        ok = (r?.p ?? 0) >= 1000;
+      }
+      if (!ok) return json({ error: 'not_ready' }, 400);
+      await env.DB.prepare('INSERT INTO tasks_done (task_id, user_id) VALUES (?,?)').bind(t.id, uid).run();
+      const balance = await credit(env, uid, t.reward);
+      await ledger(env, uid, t.reward, 'task', t.id);
+      return json({ ok: true, reward: t.reward, balance });
+    }
+
+    /* ---------- промокоды ---------- */
+    if (url.pathname === '/api/promo') {
+      const code = String(body.code ?? '').trim().toUpperCase();
+      if (!code) return json({ error: 'bad' }, 400);
+      const p: any = await env.DB.prepare('SELECT * FROM promos WHERE code = ?').bind(code).first();
+      if (!p || p.uses >= p.max_uses) return json({ error: 'not_found' }, 400);
+      const used: any = await env.DB.prepare('SELECT 1 x FROM promo_used WHERE code = ? AND user_id = ?').bind(code, uid).first();
+      if (used) return json({ error: 'used' }, 400);
+      await env.DB.prepare('INSERT INTO promo_used (code, user_id) VALUES (?,?)').bind(code, uid).run();
+      await env.DB.prepare('UPDATE promos SET uses = uses + 1 WHERE code = ?').bind(code).run();
+      const balance = await credit(env, uid, p.amount);
+      await ledger(env, uid, p.amount, 'promo', code);
+      return json({ ok: true, amount: p.amount, balance });
+    }
+
+    /* ---------- админка ---------- */
+    if (url.pathname.startsWith('/api/admin')) {
+      if (!isAdmin(env, uid)) return json({ error: 'forbidden' }, 403);
+      if (url.pathname === '/api/admin/users') {
+        const rows: any = await env.DB.prepare('SELECT telegram_id, username, first_name, balance, last_seen FROM users ORDER BY last_seen DESC LIMIT 100').all();
+        return json({ ok: true, users: rows.results });
+      }
+      if (url.pathname === '/api/admin/add') {
+        const target = Number(body.uid), amount = Math.floor(Number(body.amount));
+        if (!Number.isFinite(target) || !Number.isFinite(amount) || amount === 0) return json({ error: 'bad' }, 400);
+        const balance = amount > 0 ? await credit(env, target, amount)
+          : await (async () => { await env.DB.prepare('UPDATE users SET balance = MAX(0, balance + ?) WHERE telegram_id = ?').bind(amount, target).run();
+              const r: any = await env.DB.prepare('SELECT balance FROM users WHERE telegram_id = ?').bind(target).first(); return r?.balance ?? 0; })();
+        await ledger(env, target, amount, 'admin', null);
+        return json({ ok: true, balance });
+      }
+      if (url.pathname === '/api/admin/promo_create') {
+        const code = String(body.code ?? '').trim().toUpperCase();
+        const amount = Math.floor(Number(body.amount)), maxUses = Math.floor(Number(body.max_uses) || 1);
+        if (!code || !Number.isFinite(amount) || amount < 1) return json({ error: 'bad' }, 400);
+        await env.DB.prepare('INSERT INTO promos (code, amount, max_uses, uses, created_at) VALUES (?,?,?,?,?) ON CONFLICT(code) DO UPDATE SET amount=excluded.amount, max_uses=excluded.max_uses').bind(code, amount, maxUses, 0, Date.now()).run();
+        return json({ ok: true });
+      }
+      if (url.pathname === '/api/admin/promos') {
+        const rows: any = await env.DB.prepare('SELECT * FROM promos ORDER BY created_at DESC LIMIT 50').all();
+        return json({ ok: true, promos: rows.results };
+      }
+      return json({ error: 'unknown' }, 400);
+    }
+
+    /* ---------- /api/play ---------- */
     if (url.pathname !== '/api/play') return json({ error: 'not_found' }, 404);
 
     const game = String(body.game ?? '');
-    const max = GAME_MAX[game];
-    if (!max) return json({ error: 'unknown_game' }, 400);
-    const user: any = await getOrCreateUser(env.DB, tgUser);
+    const known = ['coinflip','wheel','mines','crash','ladder','dice','slots','roulette','blackjack','cases','rps','plinko','hilo'].includes(game);
+    if (!known) return json({ error: 'unknown_game' }, 400);
     const bet = Math.floor(Number(body.bet));
     const noBet = ['mines_pick','mines_cash','crash_cash','crash_check','ladder_pick','ladder_cash','bj_hit','bj_stand','hilo_guess','hilo_cash'].includes(game);
-    if (!noBet && (!Number.isFinite(bet) || bet < 1 || bet > max)) return json({ error: 'bad_bet' }, 400);
+    if (!noBet && (!Number.isFinite(bet) || bet < 1 || bet > 1_000_000_000)) return json({ error: 'bad_bet' }, 400);
+    await env.DB.prepare('UPDATE users SET last_game = ? WHERE telegram_id = ?').bind(game, uid).run();
     const pay = async (p: number, g: string) => {
       await ledger(env, uid, -bet, 'bet', g);
       if (p) await ledger(env, uid, p, 'win', g);
       return await credit(env, uid, p);
     };
 
-    /* COINFLIP */
     if (game === 'coinflip') {
       if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
       const choice = body.choice === 'tails' ? 'tails' : 'heads';
-      const side = (randInt(999) <= 494) ? choice : (choice === 'heads' ? 'tails' : 'heads');
+      const side = (randInt(999) <= 489) ? choice : (choice === 'heads' ? 'tails' : 'heads');
       const payout = side === choice ? bet * 2 : 0;
       const balance = await pay(payout, game);
       return json({ ok: true, side, mult: payout ? 2 : 0, payout, balance });
     }
-
-    /* WHEEL */
     if (game === 'wheel') {
       if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
       const i = wpick(WHEEL);
@@ -137,22 +267,18 @@ export default {
       const balance = await pay(payout, game);
       return json({ ok: true, index: i, mult: WHEEL[i].m, payout, balance });
     }
-
-    /* DICE */
     if (game === 'dice') {
       if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
       const target = Math.max(2, Math.min(98, Math.floor(Number(body.target) || 50)));
       const over = !!body.over;
       const chance = over ? 99 - target : target;
-      const mult = Math.floor((99 / chance) * 0.97 * 100) / 100;
+      const mult = Math.floor((99 / chance) * 0.96 * 100) / 100;
       const roll = randInt(99);
       const win = over ? roll > target : roll < target;
       const payout = win ? Math.floor(bet * mult) : 0;
       const balance = await pay(payout, game);
       return json({ ok: true, roll, win, mult, payout, balance });
     }
-
-    /* SLOTS */
     if (game === 'slots') {
       if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
       const reels = [wpick(SLOT_SYM), wpick(SLOT_SYM), wpick(SLOT_SYM)];
@@ -164,20 +290,16 @@ export default {
       const balance = await pay(payout, game);
       return json({ ok: true, reels, mult, payout, balance });
     }
-
-    /* ROULETTE */
     if (game === 'roulette') {
       if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
       const n = randInt(14);
       const color = n === 0 ? 'green' : (n % 2 === 1 ? 'red' : 'black');
       const choice = ['red','black','green'].includes(body.choice) ? body.choice : 'red';
-      const mult = choice === color ? (color === 'green' ? 14 : 2.1) : 0;
+      const mult = choice === color ? (color === 'green' ? 14 : 2) : 0;
       const payout = Math.floor(bet * mult);
       const balance = await pay(payout, game);
       return json({ ok: true, n, color, mult, payout, balance });
     }
-
-    /* RPS */
     if (game === 'rps') {
       if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
       const opts = ['rock','paper','scissors'];
@@ -185,12 +307,10 @@ export default {
       const cpu = opts[randInt(2)];
       const result = player === cpu ? 'draw'
         : (player === 'rock' && cpu === 'scissors') || (player === 'paper' && cpu === 'rock') || (player === 'scissors' && cpu === 'paper') ? 'win' : 'lose';
-      const payout = result === 'win' ? Math.floor(bet * 2.9) : result === 'draw' ? bet : 0;
+      const payout = result === 'win' ? Math.floor(bet * 2.8) : result === 'draw' ? bet : 0;
       const balance = await pay(payout, game);
       return json({ ok: true, player, cpu, result, payout, balance });
     }
-
-    /* PLINKO */
     if (game === 'plinko') {
       if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
       const path = Array.from({ length: 8 }, () => randInt(1));
@@ -200,8 +320,6 @@ export default {
       const balance = await pay(payout, game);
       return json({ ok: true, path, bucket, mult, payout, balance });
     }
-
-    /* CASES */
     if (game === 'cases') {
       if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
       const i = wpick(CASES);
@@ -210,7 +328,6 @@ export default {
       return json({ ok: true, index: i, mult: CASES[i].m, payout, balance });
     }
 
-    /* MINES */
     if (game === 'mines_start') {
       if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
       const mc = [3,5,8].includes(Number(body.mines)) ? Number(body.mines) : 5;
@@ -244,10 +361,9 @@ export default {
       return json({ ok: true, payout, balance });
     }
 
-    /* LADDER */
     if (game === 'ladder_start') {
       if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
-      const mines = Array.from({ length: LADDER_ROWS }, () => randInt(2));
+      const mines = Array.from({ length: 8 }, () => randInt(2));
       const sid = crypto.randomUUID();
       await saveSession(env, sid, uid, 'ladder', { bet, mines, step: 0, done: false });
       await ledger(env, uid, -bet, 'bet', 'ladder');
@@ -257,18 +373,18 @@ export default {
       const s = await loadSession(env, String(body.sid ?? ''), uid);
       if (!s || s.data.done) return json({ error: 'done' }, 400);
       const cell = Math.floor(Number(body.cell));
-      if (cell < 0 || cell > 2 || s.data.step >= LADDER_ROWS) return json({ error: 'bad_cell' }, 400);
+      if (cell < 0 || cell > 2 || s.data.step >= 8) return json({ error: 'bad_cell' }, 400);
       const row = s.data.step;
       if (s.data.mines[row] === cell) {
         s.data.done = true; await saveSession(env, body.sid, uid, 'ladder', s.data);
         return json({ ok: true, boom: true, row, mine: s.data.mines[row] });
       }
       s.data.step++;
-      const top = s.data.step >= LADDER_ROWS;
+      const top = s.data.step >= 8;
       let payout = 0, balance;
       if (top) {
         s.data.done = true;
-        payout = Math.floor(s.data.bet * ladderMult(LADDER_ROWS));
+        payout = Math.floor(s.data.bet * ladderMult(8));
         balance = await credit(env, uid, payout);
         await ledger(env, uid, payout, 'win', 'ladder');
       }
@@ -285,7 +401,6 @@ export default {
       return json({ ok: true, payout, balance });
     }
 
-    /* CRASH */
     if (game === 'crash_start') {
       if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
       const sid = crypto.randomUUID();
@@ -318,7 +433,6 @@ export default {
       return json({ ok: true, crashed: false, m: Math.floor(m*100)/100 });
     }
 
-    /* BLACKJACK */
     if (game === 'blackjack_start') {
       if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
       const player = [drawCard(), drawCard()];
@@ -328,7 +442,7 @@ export default {
       let done = false, payout = 0, balance;
       if (pv === 21) {
         done = true;
-        payout = handValue(dealer.map(c => c.r)) === 21 ? bet : Math.floor(bet * 2.5);
+        payout = handValue(dealer.map(c => c.r)) === 21 ? bet : Math.floor(bet * 2.2);
         balance = await credit(env, uid, payout);
         await ledger(env, uid, payout, 'win', 'blackjack');
       }
@@ -362,10 +476,9 @@ export default {
       return json({ ok: true, dealer, dv, result, payout, balance });
     }
 
-    /* HI-LO */
     if (game === 'hilo_start') {
       if (!(await deduct(env, uid, bet))) return json({ error: 'low_balance' }, 400);
-           const first = 1 + randInt(12);
+      const first = 1 + randInt(12);
       const sid = crypto.randomUUID();
       await saveSession(env, sid, uid, 'hilo', { bet, cur: first, mult: 1, done: false });
       await ledger(env, uid, -bet, 'bet', 'hilo');
@@ -379,10 +492,10 @@ export default {
       if ((higher && v === 13) || (!higher && v === 1)) return json({ error: 'bad_bet' }, 400);
       let next = 1 + randInt(12);
       while (next === v) next = 1 + randInt(12);
-      const ok = higher ? next > v : next < v;
-      if (!ok) { s.data.done = true; await saveSession(env, body.sid, uid, 'hilo', s.data);
+      const okk = higher ? next > v : next < v;
+      if (!okk) { s.data.done = true; await saveSession(env, body.sid, uid, 'hilo', s.data);
         return json({ ok: true, win: false, next }); }
-      s.data.mult = Math.floor(s.data.mult * (0.96 * 12 / (higher ? 13 - v : v - 1)) * 100) / 100;
+      s.data.mult = Math.floor(s.data.mult * (0.94 * 12 / (higher ? 13 - v : v - 1)) * 100) / 100;
       s.data.cur = next;
       await saveSession(env, body.sid, uid, 'hilo', s.data);
       return json({ ok: true, win: true, next, mult: s.data.mult });
