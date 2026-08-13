@@ -57,7 +57,9 @@ export function renderTasks(app){
     body: JSON.stringify({ initData: tg?.initData ?? '' })
   }).then(r => r.json()).then(d => {
     if (!d.ok) return;
-    if (d.subError) toast('TG: ' + d.subError);
+        if (d.subError) toast(/member list|inaccessible|Forbidden|admin/i.test(d.subError)
+      ? 'Бот не админ канала — добавь @prizmCasinoBot админом'
+      : 'TG: ' + d.subError);
     list.replaceChildren();
     for (const t of d.tasks){
       const row = el('div','task-row glass');
