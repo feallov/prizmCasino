@@ -1,4 +1,4 @@
-import { el, haptic, makeBetRow } from '../ui.js';
+import { el, haptic, fmt, makeBetRow } from '../ui.js';
 import { play } from '../api.js';
 
 const SEG = [
@@ -38,16 +38,17 @@ export function renderWheel(app){
 
   go.onclick = async () => {
     if (busy) return; busy = true; go.disabled = true; res.hidden = true;
+    bets.el.style.display = 'none';
     stage.classList.remove('win','lose');
     haptic(tg, 'medium');
 
     const d = await play(tg, 'wheel', { bet });
     if (!d.ok){
       busy = false; go.disabled = false;
-      toast(d.error === 'low_balance' ? 'Не хватает осколков' : 'Ошибка');
+      bets.el.style.display = '';
+      toast(d.error === 'low_balance' ? 'Не хватает рублей' : 'Ошибка');
       return;
     }
-    state.balance = d.balance; syncTop();
 
     const desired = (360 - (d.index*36 + 18)) % 360;
     const delta = (desired - (rot % 360) + 360) % 360;
@@ -55,13 +56,15 @@ export function renderWheel(app){
     wheel.style.transform = `rotate(${rot}deg)`;
 
     setTimeout(() => {
+      state.balance = d.balance; syncTop();
       const profit = d.payout - bet;
       res.hidden = false;
       res.className = `result-pill ${profit > 0 ? 'win' : 'lose'}`;
-      res.textContent = `x${d.mult} • ${profit >= 0 ? '+' : '−'}${Math.abs(profit)} 💎`;
+      res.textContent = `x${d.mult} • ${profit >= 0 ? '+' : '−'}${fmt(Math.abs(profit))} ₽`;
       stage.classList.add(profit > 0 ? 'win' : 'lose');
       try { tg?.HapticFeedback?.notificationOccurred(profit > 0 ? 'success' : 'error'); } catch {}
       busy = false; go.disabled = false;
+      bets.el.style.display = '';
     }, 3300);
   };
 
