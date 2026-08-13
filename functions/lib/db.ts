@@ -1,5 +1,3 @@
-// Схема D1 + авто-регистрация. Таблицы создаются сами, миграции не нужны.
-
 export const START_BALANCE = 1000;
 
 let schemaReady = false;
@@ -21,6 +19,13 @@ export async function ensureSchema(db: any) {
     amount INTEGER NOT NULL,
     reason TEXT NOT NULL,
     game TEXT,
+    created_at INTEGER NOT NULL
+  )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    game TEXT NOT NULL,
+    data TEXT NOT NULL,
     created_at INTEGER NOT NULL
   )`).run();
   schemaReady = true;
